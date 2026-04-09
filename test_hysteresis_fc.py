@@ -78,10 +78,10 @@ class HysteresisFCTest:
 
         plt.xlabel(f"Motor {motor_idx} Command")
         plt.ylabel("Voltage")
-        plt.title(f"Hysteresis - Motor 9")#{motor_idx}")
+        plt.title(f"Hysteresis - Motor {motor_idx}")
         plt.legend()
         plt.grid()
-        plt.savefig(f"full_hysteresis_fc_steps1_motor_{motor_idx}.png", dpi=300)
+        plt.savefig(f".Data/full_hysteresis_fc_steps1_motor_{motor_idx}.png", dpi=300)
         plt.close()
 
     def compute_hysteresis_metrics(self, f_cmd, b_cmd, f_meas, b_meas):
