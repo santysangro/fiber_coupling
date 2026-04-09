@@ -1,0 +1,5 @@
+numpy
+feetech-servo-sdk
+pyserial
+picosdk
+matplotlib

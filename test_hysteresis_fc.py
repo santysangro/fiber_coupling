@@ -1,7 +1,6 @@
 import numpy as np
 from configuration import SERVOS_TEST_POS
-from fibber_coupling.picoscope import Picoscope
-from cameras import Cameras
+from picoscope import Picoscope
 from servos import Servos
 import matplotlib.pyplot as plt
 from scservo_sdk import *  # type: ignore
@@ -27,7 +26,7 @@ class HysteresisFCTest:
                 f_meas, b_meas = [], []
 
                 # Forward sweep
-                for x in range(1000):
+                for x in range(10):
                     print(f'iteration {x}')
                     servos.write(pos)
                     #time.sleep(0.05)
@@ -41,7 +40,7 @@ class HysteresisFCTest:
                     pos[motor_idx] += step
                 print("Now back!")
                 # Backward sweep
-                for j in range(1000):
+                for j in range(10):
                     print(f'iteration {j}')
                     pos[motor_idx] -= step
                     servos.write(pos)
