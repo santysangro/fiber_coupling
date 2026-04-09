@@ -141,8 +141,3 @@ class Picoscope():
     
     def close_device(self):
          self.device.close()
-
-if __name__ == '__main__':
-    pico = Picoscope()
-    pico.get_voltage(CHANNEL='A')
-    pico.get_voltage(CHANNEL='B')
