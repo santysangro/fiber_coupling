@@ -1,7 +1,7 @@
 import numpy as np
 import time
 from configuration import SERVOS_TEST_POS
-from fibber_coupling.picoscope import Picoscope
+from picoscope import Picoscope
 from servos import Servos
 
 class GradientDescent1D:
