@@ -1,7 +1,7 @@
 import numpy as np
 from configuration import SERVOS_TEST_POS
-from picoscope import Picoscope
-from servos import Servos
+from controller.picoscope import Picoscope
+from controller.servos import Servos
 import matplotlib.pyplot as plt
 from scservo_sdk import *  # type: ignore
 import time

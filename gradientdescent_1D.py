@@ -1,8 +1,8 @@
 import numpy as np
 import time
 from configuration import SERVOS_TEST_POS
-from picoscope import Picoscope
-from servos import Servos
+from controller.picoscope import Picoscope
+from controller.servos import Servos
 
 class GradientDescent1D:
     def __init__(self, motor_id,

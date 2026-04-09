@@ -2,7 +2,7 @@ from scservo_sdk import *  # type: ignore
 import math
 import time
 
-from servos import Servos
+from controller.servos import Servos
 
 
 def run_experiment(params, picoscope, target_position):

@@ -1,7 +1,7 @@
 from configuration import M_LOOP_ITERATIONS
 from run_experiment_fiber_coupling import run_experiment
-from servos import Servos
-from picoscope import Picoscope
+from controller.servos import Servos
+from controller.picoscope import Picoscope
 import time
 
 # Imports for M-LOOP
