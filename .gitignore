@@ -7,3 +7,7 @@ __pycache__/
 
 # IDEs
 .vscode/
+
+#M-LOOP archives
+M-LOOP_archives/
+M-LOOP_logs/

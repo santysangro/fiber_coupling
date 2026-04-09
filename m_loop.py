@@ -40,11 +40,10 @@ class CustomInterface(mli.Interface):
         #     args.append(self.target_position)
 
         cost = run_experiment(params, self.picoscope, self.target_voltage)
-
         # The cost, uncertainty and bad boolean must all be returned as a dictionary
         # You can include other variables you want to record as well if you want
         cost_dict = {'cost': cost}
-
+        print("COST: ", cost)
         time.sleep(0.1)
 
         return cost_dict
@@ -66,7 +65,7 @@ def run_mloop(target_voltage=None):
     max_boundary = [min(4095, 4095) for pos in init_positions]
 
     controller = mlc.create_controller(interface,
-                                       max_num_runs=M_LOOP_ITERATIONS,
+                                       max_num_runs=2,#M_LOOP_ITERATIONS,
                                        num_params=num_servos,
                                        min_boundary=min_boundary,
                                        max_boundary=max_boundary,
