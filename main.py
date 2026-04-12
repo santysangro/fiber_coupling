@@ -1,11 +1,11 @@
 import customtkinter as ctk
 from view.servos_ui import ReadServosFrame, WriteServosFrame
-
+from view.picoscope_ui import ReadPicoscopeFrame
 
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Experiment Control Panel")
+        self.root.title("Fiber Coupling Control Panel")
 
         # Configure grid layout
         self.root.grid_rowconfigure(0, weight=1)
@@ -23,6 +23,16 @@ class App:
 
         # Read Servo Positions Section
         self.read_servos_frame = ReadServosFrame(root)
+        self.read_servos_frame.grid(
+            row=0, column=0, rowspan=2, sticky="nsew", **paddings)
+
+        # Write Servo Positions Section
+        self.write_servos_frame = WriteServosFrame(root)
+        self.write_servos_frame.grid(
+            row=0, column=1, rowspan=2, sticky="nsew", **paddings)
+
+        # Read Voltage
+        self.red_signal_frame = ReadPicoscopeFrame(root)
         self.read_servos_frame.grid(
             row=0, column=0, rowspan=2, sticky="nsew", **paddings)
 

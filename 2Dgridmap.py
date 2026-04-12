@@ -8,9 +8,9 @@ import time
 
 class Scan2D:
     def __init__(self):
-        self.picoscope = Picoscope(voltage_range='PS2000_5V')
+        self.picoscope = Picoscope(voltage_range='PS2000_2V')
 
-    def run_scan(self, motor_x=0, motor_y=1,
+    def run_scan(self, motor_x=0, motor_y=2,
                  range_x=1000, range_y=1000,
                  steps_x=5, steps_y=5,
                  settle_time=0.02):
@@ -90,18 +90,18 @@ class Scan2D:
         plt.savefig(f"Data/contour_m{motor_x}_m{motor_y}.png", dpi=300)
         plt.close()
 
-    def run(self):
+    def run(self, motorx=0, motory=1):
         data, x_vals, y_vals = self.run_scan(
-            motor_x=0,
-            motor_y=3,
+            motor_x=motorx,
+            motor_y=motory,
             range_x=500,
             range_y=500,
             steps_x=50,
             steps_y=50
         )
 
-        self.plot_heatmap(data, x_vals, y_vals, 0, 3)
-        self.plot_contour(data, x_vals, y_vals, 0, 3)
+        self.plot_heatmap(data, x_vals, y_vals, motorx, motory)
+        self.plot_contour(data, x_vals, y_vals, motorx, motory)
 
 
 if __name__ == "__main__":

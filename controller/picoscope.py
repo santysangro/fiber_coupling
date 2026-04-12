@@ -119,7 +119,8 @@ class Picoscope:
             #end = time.time()
             #channel_b_mv = adc2mV(buffer_b, ps2000.PS2000_VOLTAGE_RANGE['PS2000_50MV'], c_int16(32767))
             if channel_overflow:
-                print("OVERSATURATED!! :(")
+                #print("OVERSATURATED!! :(")
+                return 
             """
             fig, ax = plt.subplots()
             ax.set_xlabel('time/ms')
