@@ -5,3 +5,4 @@ picosdk
 matplotlib
 M-LOOP
 customtkinter
+pandas

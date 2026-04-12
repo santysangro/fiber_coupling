@@ -9,7 +9,7 @@ from picosdk.PicoDeviceEnums import picoEnum
 import matplotlib.pyplot as plt
 
 
-class Picoscope():
+class Picoscope:
 
     def __init__(self, samples=2000, oversampling=1, voltage_range='PS2000_2V'):
         self.samples = samples

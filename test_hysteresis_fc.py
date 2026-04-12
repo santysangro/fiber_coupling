@@ -9,24 +9,24 @@ import csv
 
 class HysteresisFCTest:
     def __init__(self):
-        self.picoscope = Picoscope(voltage_range='PS2000_50MV')
+        self.picoscope = Picoscope(voltage_range='PS2000_5V')
 
     def test_single_motor(self, motor_idx, step=1):
         with Servos() as servos:
-            filename = f"sweep_data_motor_{motor_idx}.csv"
-            for _ in range(2): #with open(filename, mode='w', newline='') as file:
-                #writer = csv.writer(file)
+            filename = f"Data/sweep_data_motor_{motor_idx}.csv"
+            with open(filename, mode='w', newline='') as file:
+                writer = csv.writer(file)
 
-                #writer.writerow(["iteration", "motor_pos", "voltage", "direction"])
+                writer.writerow(["iteration", "motor_pos", "voltage", "direction"])
                 base_pos = np.array(SERVOS_TEST_POS.copy())
-                base_pos[motor_idx] -= 200
+                base_pos[motor_idx] -= 700
                 pos = base_pos.copy()
                 
                 f_cmd, b_cmd = [], []
                 f_meas, b_meas = [], []
 
                 # Forward sweep
-                for x in range(10):
+                for x in range(1400):
                     print(f'iteration {x}')
                     servos.write(pos)
                     #time.sleep(0.05)
@@ -36,18 +36,18 @@ class HysteresisFCTest:
                     f_cmd.append(pos[motor_idx])
                     f_meas.append(voltage)
 
-                    #writer.writerow([x, pos[motor_idx], voltage, "forward"])
+                    writer.writerow([x, pos[motor_idx], voltage, "forward"])
                     pos[motor_idx] += step
                 print("Now back!")
                 # Backward sweep
-                for j in range(10):
+                for j in range(1400):
                     print(f'iteration {j}')
                     pos[motor_idx] -= step
                     servos.write(pos)
                     #time.sleep(0.05)
                     voltage, _ = self.picoscope.get_voltage()
 
-                    #writer.writerow([x, pos[motor_idx], voltage, "backwards"])
+                    writer.writerow([x, pos[motor_idx], voltage, "backwards"])
 
                     b_cmd.append(pos[motor_idx])
                     b_meas.append(voltage)
@@ -81,7 +81,7 @@ class HysteresisFCTest:
         plt.title(f"Hysteresis - Motor {motor_idx}")
         plt.legend()
         plt.grid()
-        plt.savefig(f".Data/full_hysteresis_fc_steps1_motor_{motor_idx}.png", dpi=300)
+        plt.savefig(f"Data/full_hysteresis_fc_steps1_motor_{motor_idx}.png", dpi=300)
         plt.close()
 
     def compute_hysteresis_metrics(self, f_cmd, b_cmd, f_meas, b_meas):
@@ -100,9 +100,9 @@ class HysteresisFCTest:
     def run_all(self):
         num_motors = len(SERVOS_TEST_POS)
 
-        for m in [1,2,3]:#range(num_motors):
+        for m in [0,1]:#range(num_motors):
             print(f"\nTesting motor {m}")
-            f_cmd, b_cmd, f_meas, b_meas = self.test_single_motor(3)
+            f_cmd, b_cmd, f_meas, b_meas = self.test_single_motor(m)
 
             # Plot curves
             self.plot_hysteresis(m, f_cmd, b_cmd, f_meas, b_meas)

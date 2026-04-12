@@ -80,7 +80,7 @@ class Servos:
 
         for i, sts_id in enumerate(STS_IDS):
             pos = list(self.read_single_servo(sts_id))
-            #pos[1] += SERVO_TURNS[i] * 4096
+            pos[1] += SERVO_TURNS[i] * 4096
             servo_positions.append(pos)
 
         return servo_positions
@@ -183,3 +183,97 @@ class Servos:
         self.port_handler.closePort()
 
         return False
+        
+    """
+    def new_write(self, sts_goal_positions):
+
+        current_positions = np.array(self.read())[:, 1]
+
+        error = sts_goal_positions - current_positions
+
+        # =========================
+        # STEP 1: COARSE MOTION (ROTATE APPROACH)
+        # =========================
+        print(error)
+        for i, err in enumerate(error):
+            print(i, err)
+            if abs(err) < 4090:
+                continue
+
+            # convert encoder error → rotation estimate
+            units = abs(err)
+            direction = 1 if err > 0 else -1
+            self.set_mode(STS_IDS[i], 1)
+            self.rotate(units, STS_IDS[i], direction)
+
+        # allow motion to settle
+
+        # stop all motors just in case
+        for sid in STS_IDS:
+            self.stop(sid)
+
+        # =========================
+        # STEP 2: FINE POSITION CORRECTION
+        # =========================
+
+        time.sleep(0.05)
+        for i, (sts_id, sts_goal_position) in enumerate(zip(STS_IDS, sts_goal_positions)):    
+            if sts_goal_position > 4096 and sts_goal_position <= 8192:
+                    SERVO_TURNS[i] = 1
+            elif sts_goal_position > 8192:
+                    SERVO_TURNS[i] = 2
+            else:
+                    SERVO_TURNS[i] = 0
+            update_configuration(SERVO_TURNS)
+            wrapped = sts_goal_position % 4096
+            self.set_mode(STS_IDS[i], 0)
+            self.write_single_servo(sts_id, wrapped)
+
+
+
+    def set_velocity_mode(self, servo_id):
+        self.packet_handler.write1ByteTxRx(
+            self.port_handler,
+            servo_id,
+            33,
+            1   # velocity mode (most STS firmware)
+        )
+        time.sleep(0.1)
+
+    # =========================
+    # STOP MOTOR
+    # =========================
+    def stop(self, servo_id):
+        self.packet_handler.write2ByteTxRx(
+            self.port_handler,
+            servo_id,
+            46,
+            0
+        )
+
+    def set_mode(self,servo_id, mode=0):
+        self.packet_handler.write1ByteTxRx(
+            self.port_handler,
+            servo_id,
+            33,
+            mode   # velocity mode (most STS firmware)
+        )
+
+    # =========================
+    # ROTATE FUNCTION
+    # =========================
+    def rotate(self, units, servo_id, direction):
+        speed = 1000
+        rotations = units / speed
+        duration = rotations * 1.00
+        speed = 1000 * direction
+        self.packet_handler.write2ByteTxRx(
+            self.port_handler,
+            servo_id,
+            46,
+            speed
+        )
+
+        time.sleep(duration)
+        self.stop(servo_id)
+    """
