@@ -24,7 +24,7 @@ class App:
         # Read Servo Positions Section
         self.read_servos_frame = ReadServosFrame(root)
         self.read_servos_frame.grid(
-            row=0, column=0, rowspan=2, sticky="nsew", **paddings)
+            row=0, column=0, rowspan=1, sticky="nsew", **paddings)
 
         # Write Servo Positions Section
         self.write_servos_frame = WriteServosFrame(root)
@@ -32,15 +32,16 @@ class App:
             row=0, column=1, rowspan=2, sticky="nsew", **paddings)
 
         # Read Voltage
+
         self.red_signal_frame = ReadPicoscopeFrame(root)
         self.read_servos_frame.grid(
-            row=0, column=0, rowspan=2, sticky="nsew", **paddings)
-
+            row=2, column=2, rowspan=1, sticky="nsew", **paddings)
+        """
         # Write Servo Positions Section
         self.write_servos_frame = WriteServosFrame(root)
         self.write_servos_frame.grid(
             row=0, column=1, rowspan=2, sticky="nsew", **paddings)
-
+        """
 
 if __name__ == "__main__":
     # Modes: system (default), light, dark
