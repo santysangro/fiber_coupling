@@ -3,10 +3,12 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel, M
 import numpy as np
 from controller.servos import Servos
 from controller.picoscope import Picoscope
-from run_experiment_fiber_coupling import run_experiment
+from Model.run_experiment_fiber_coupling import run_experiment
 import time
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+import pandas as pd
+
 
 class GaussianProcessModel:
     def __init__(self):
@@ -33,9 +35,11 @@ class GaussianProcessModel:
     def denormalize_X(self, X):
         return np.clip(X * self.bounds, 0, self.bounds).astype(int)
     
+    
     def acquisition_ucb(self, gp, X, kappa=2):
         mean, std = gp.predict(X, return_std=True)
         return mean + kappa * std
+
 
     def suggest_next_point(self):
         def objective(x):
@@ -54,13 +58,22 @@ class GaussianProcessModel:
        
         return res.x
     
-    """
-    def suggest_next_point(self, n_candidates=50000):
-        X = np.random.uniform(0, 4095, size=(n_candidates, 4))
-        X_norm = self.normalize_X(X)
-        score = self.acquisition_ucb(self.gp, X_norm)
-        return X[np.argmax(score)]
-    """
+
+    def train_gp_from_csv(self):
+
+        data = pd.read_csv(self.csv_path).values
+
+        X = data[:, :self.motor_num]   # motors
+        y = data[:, self.motor_num]    # voltage
+
+        # normalize
+        X = X / self.normalize_X
+
+        print("Training GP...")
+        self.gp_model.train(X, y)
+
+        print("GP training complete.")
+
     
     def train(self, X, y):
         self.gp.fit(X, y)
@@ -69,51 +82,9 @@ class GaussianProcessModel:
         
         #return self
 
-    def refine_gradient_descent(self, start_x, picoscope, eps=5, lr=0.9, steps=5):
-        """
-        Real gradient descent using actual experiment measurements.
-        
-        eps: small motor step (in DAC units)
-        lr: step size (in DAC units)
-        """
 
-        x = start_x.astype(float).copy()
 
-        def measure(x):
-            x_int = np.clip(x, 0, self.bounds).astype(int)
-            y = -run_experiment(x_int, picoscope)
-            return y
-
-        history = []
-
-        for step in range(steps):
-            grad = np.zeros_like(x)
-
-            for i in range(len(x)):
-                x_plus = x.copy()
-                x_minus = x.copy()
-
-                x_plus[i] += eps
-                x_minus[i] -= eps
-
-                y_plus = measure(x_plus)
-                y_minus = measure(x_minus)
-
-                grad[i] = (y_plus - y_minus) / (2 * eps)
-
-            # Gradient ascent (maximize voltage)
-            x = x + lr * grad
-
-            # Clip to valid range
-            x = np.clip(x, 0, self.bounds)
-
-            y = measure(x)
-            history.append(y)
-
-            print(f"REAL GD step {step}: x = {x.astype(int)}, voltage = {y:.4f}")
-
-        return x.astype(int), history
-
+    """
     def run(self):
         picoscope = Picoscope()
         with Servos() as servos:
@@ -193,10 +164,7 @@ class GaussianProcessModel:
         plt.savefig(f"Data/gp_1d_dim{dim}.png", dpi=300)
         plt.show()
         plt.close()
-
-trial = GaussianProcessModel()
-trial.run()
-
+    """
 
 """
 import pandas as pd
@@ -311,3 +279,50 @@ def plot_gp_slice(self, fixed_x=None, grid_size=40):
         plt.show()
         plt.close()
 
+
+
+
+    def refine_gradient_descent(self, start_x, picoscope, eps=5, lr=0.9, steps=5):
+        """
+        Real gradient descent using actual experiment measurements.
+        
+        eps: small motor step (in DAC units)
+        lr: step size (in DAC units)
+        """
+
+        x = start_x.astype(float).copy()
+
+        def measure(x):
+            x_int = np.clip(x, 0, self.bounds).astype(int)
+            y = -run_experiment(x_int, picoscope)
+            return y
+
+        history = []
+
+        for step in range(steps):
+            grad = np.zeros_like(x)
+
+            for i in range(len(x)):
+                x_plus = x.copy()
+                x_minus = x.copy()
+
+                x_plus[i] += eps
+                x_minus[i] -= eps
+
+                y_plus = measure(x_plus)
+                y_minus = measure(x_minus)
+
+                grad[i] = (y_plus - y_minus) / (2 * eps)
+
+            # Gradient ascent (maximize voltage)
+            x = x + lr * grad
+
+            # Clip to valid range
+            x = np.clip(x, 0, self.bounds)
+
+            y = measure(x)
+            history.append(y)
+
+            print(f"REAL GD step {step}: x = {x.astype(int)}, voltage = {y:.4f}")
+
+        return x.astype(int), history
