@@ -135,7 +135,7 @@ class Picoscope:
             plt.savefig(f"signal_at_fiber.png")
             """
             average = np.average(channel_mv)
-            print(f"Voltage: {average} mV")
+            #print(f"Voltage: {average} mV")
             #print("DURATION OF ACQUISITION: ", end - start)
             std_dev = np.std(channel_mv)  # per-acquisition SD
             return average, std_dev

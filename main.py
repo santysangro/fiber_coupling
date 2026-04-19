@@ -2,51 +2,74 @@ import customtkinter as ctk
 from view.servos_ui import ReadServosFrame, WriteServosFrame
 from view.picoscope_ui import ReadPicoscopeFrame
 
+
 class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Fiber Coupling Control Panel")
 
-        # Configure grid layout
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_rowconfigure(1, weight=1)
-        self.root.grid_rowconfigure(2, weight=1)
-        self.root.grid_rowconfigure(3, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_columnconfigure(1, weight=1)
-        self.root.grid_columnconfigure(2, weight=1)
-        self.root.grid_columnconfigure(3, weight=1)
-        self.root.grid_columnconfigure(4, weight=1)
+        # Configure grid (Title row + content row)
+        self.root.grid_rowconfigure(0, weight=0)  # title
+        self.root.grid_rowconfigure(1, weight=1)  # main content
 
-        # UI options
+        for col in range(3):
+            self.root.grid_columnconfigure(col, weight=1)
+
         paddings = {"padx": 10, "pady": 10}
 
-        # Read Servo Positions Section
-        self.read_servos_frame = ReadServosFrame(root)
-        self.read_servos_frame.grid(
-            row=0, column=0, rowspan=1, sticky="nsew", **paddings)
+        # ======================
+        # Title
+        # ======================
+        self.title_label = ctk.CTkLabel(
+            root,
+            text="Fiber Coupling",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        self.title_label.grid(row=0, column=0, columnspan=3, pady=15)
 
-        # Write Servo Positions Section
-        self.write_servos_frame = WriteServosFrame(root)
-        self.write_servos_frame.grid(
-            row=0, column=1, rowspan=2, sticky="nsew", **paddings)
+        # ======================
+        # Column 1: Servos
+        # ======================
+        self.servos_frame = ctk.CTkFrame(root)
+        self.servos_frame.grid(row=1, column=0, sticky="nsew", **paddings)
 
-        # Read Voltage
+        self.servos_frame.grid_rowconfigure((0, 1), weight=1)
+        self.servos_frame.grid_columnconfigure(0, weight=1)
 
-        self.red_signal_frame = ReadPicoscopeFrame(root)
-        self.read_servos_frame.grid(
-            row=2, column=2, rowspan=1, sticky="nsew", **paddings)
-        """
-        # Write Servo Positions Section
-        self.write_servos_frame = WriteServosFrame(root)
-        self.write_servos_frame.grid(
-            row=0, column=1, rowspan=2, sticky="nsew", **paddings)
-        """
+        self.read_servos_frame = ReadServosFrame(self.servos_frame)
+        self.read_servos_frame.grid(row=0, column=0, sticky="nsew", **paddings)
+
+        self.write_servos_frame = WriteServosFrame(self.servos_frame)
+        self.write_servos_frame.grid(row=1, column=0, sticky="nsew", **paddings)
+
+        # ======================
+        # Column 2: Picoscope
+        # ======================
+        self.pico_frame = ctk.CTkFrame(root)
+        self.pico_frame.grid(row=1, column=1, sticky="nsew", **paddings)
+
+        self.pico_frame.grid_rowconfigure(0, weight=1)
+        self.pico_frame.grid_columnconfigure(0, weight=1)
+
+        self.red_signal_frame = ReadPicoscopeFrame(self.pico_frame)
+        self.red_signal_frame.grid(row=0, column=0, sticky="nsew", **paddings)
+
+        # ======================
+        # Column 3: Placeholder
+        # ======================
+        self.future_frame = ctk.CTkFrame(root)
+        self.future_frame.grid(row=1, column=2, sticky="nsew", **paddings)
+
+        self.placeholder_label = ctk.CTkLabel(
+            self.future_frame,
+            text="Fiber Coupling Tools\n(Coming Soon)",
+            font=ctk.CTkFont(size=16)
+        )
+        self.placeholder_label.pack(expand=True)
+
 
 if __name__ == "__main__":
-    # Modes: system (default), light, dark
     ctk.set_appearance_mode("dark")
-    # Themes: blue (default), dark-blue, green
     ctk.set_default_color_theme("dark-blue")
 
     root = ctk.CTk()

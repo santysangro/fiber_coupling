@@ -1,7 +1,7 @@
 from scservo_sdk import *  # type: ignore
 import math
 import time
-
+import numpy as np
 from controller.servos import Servos
 
 
@@ -18,6 +18,10 @@ def run_experiment(params, picoscope):
         servos.write(sts_goal_positions)
 
     time.sleep(0.2)
-    voltage, _ = picoscope.get_voltage()
+    vs = []
+    for _ in range(10):
+        voltage1, _ = picoscope.get_voltage()
+        vs.append(voltage1)
+    voltage = np.mean(vs)
     cost = - voltage #abs(target_position - voltage) #squared error
     return cost

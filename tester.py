@@ -21,7 +21,7 @@ def test_servos(manual_input=False, write=False):
 
                 servos.write(goal_positions)
             else:
-                servos.write(SERVOS_TEST_POS)
+                servos.write([2146, 1148, 1039, 769])
 
 def test_picoscope():
     pico = Picoscope(voltage_range='PS2000_2V')
