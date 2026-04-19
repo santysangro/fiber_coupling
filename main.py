@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from view.servos_ui import ReadServosFrame, WriteServosFrame
 from view.picoscope_ui import ReadPicoscopeFrame
+from view.fiber_coupling_ui import FiberCouplingFrame
+from view.fine_tuning_ui import FineTuningFrame
 
 
 class App:
@@ -53,19 +55,26 @@ class App:
 
         self.red_signal_frame = ReadPicoscopeFrame(self.pico_frame)
         self.red_signal_frame.grid(row=0, column=0, sticky="nsew", **paddings)
-
         # ======================
-        # Column 3: Placeholder
+        # Column 3: Fiber Coupling
         # ======================
-        self.future_frame = ctk.CTkFrame(root)
-        self.future_frame.grid(row=1, column=2, sticky="nsew", **paddings)
+        self.fiber_frame = ctk.CTkFrame(root)
+        self.fiber_frame.grid(row=1, column=2, sticky="nsew", **paddings)
 
-        self.placeholder_label = ctk.CTkLabel(
-            self.future_frame,
-            text="Fiber Coupling Tools\n(Coming Soon)",
-            font=ctk.CTkFont(size=16)
-        )
-        self.placeholder_label.pack(expand=True)
+        self.fiber_frame.grid_rowconfigure((0, 1), weight=1)
+        self.fiber_frame.grid_columnconfigure(0, weight=1)
+
+        # ----------------------
+        # Scratch alignment (coarse)
+        # ----------------------
+        self.scratch_frame = FiberCouplingFrame(self.fiber_frame)
+        self.scratch_frame.grid(row=0, column=0, sticky="nsew", **paddings)
+
+        # ----------------------
+        # Fine tuning (optimization)
+        # ----------------------
+        self.tuning_frame = FineTuningFrame(self.fiber_frame)
+        self.tuning_frame.grid(row=1, column=0, sticky="nsew", **paddings)
 
 
 if __name__ == "__main__":
