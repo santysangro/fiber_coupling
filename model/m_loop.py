@@ -1,5 +1,5 @@
 from configuration import M_LOOP_ITERATIONS, SERVOS_TEST_POS
-from run_experiment_fiber_coupling import run_experiment
+from Model.run_experiment_fiber_coupling import run_experiment
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 import time
