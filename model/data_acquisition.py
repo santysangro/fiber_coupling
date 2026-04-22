@@ -5,27 +5,26 @@ import time
 from configuration import *
 from controller.picoscope import Picoscope
 from controller.servos import Servos
-
 from scipy.stats.qmc import LatinHypercube
 from scipy.stats import qmc
 
-N_SAMPLES = 10000
 SETTLE_TIME = 0.03
 
 class DataAcquisition:
 
-    def __init__(self, data_path= f"Data/data_12_4.csv", search_type="random"):
+    def __init__(self, data_path= f"Data/data_22_4.csv", search_type="random"):
         self.data_path = data_path
         self.data = []
         self.labels = []
         self.search_type = search_type
+        self.num_samples = 100
 
 
 
-    def search_structure(self, min_boundary, max_boundary, n_samples=N_SAMPLES):
+    def search_structure(self, min_boundary, max_boundary):
         if self.search_type == "LatinHypercube":
             sampler = LatinHypercube(d=4) #I think d is the number of motors?
-            X = sampler.random(n=n_samples)
+            X = sampler.random(n=self.num_samples)
 
             """
             TO DO: Compute the quality of the sample using the discrepancy criterion.
@@ -40,8 +39,8 @@ class DataAcquisition:
 
 
     def run(self, min_boundary=[0 for _ in range(len(STS_IDS))], max_boundary=[4095 for _ in range(len(STS_IDS))], sample_size=10):
-        picoscope = Picoscope(voltage_range='PS2000_2V')
-        
+        self.num_samples = sample_size
+        picoscope = Picoscope()
         try:
             with open(self.data_path, mode='w', newline='') as file:
                 writer = csv.writer(file)
@@ -50,7 +49,7 @@ class DataAcquisition:
 
                 with Servos() as servos:
                     for i, pos in enumerate(X):
-                        print(f"Point {i+1}/{N_SAMPLES}: {pos}")
+                        print(f"Point {i+1}/{self.num_samples}: {pos}")
 
                         try:
                             pos = np.clip(pos, min_boundary, max_boundary) #JUST IN CASE SOMETHING WENT WRONG
@@ -79,6 +78,17 @@ class DataAcquisition:
 
         picoscope.close_device()
 
+    def load_dataset(self):
+        """
+        Load dataset from CSV
+        Assumes: first N columns = motor positions, last column = voltage
+        """
+        data = pd.read_csv(self.data_path).values
+
+        X = data[:, :-2]   # all columns except last
+        y = data[:, 4]    # last column (voltage)
+
+        return X, y
 
 
 
@@ -203,14 +213,12 @@ def pca_full_landscape(csv_path, save_path= None, make_heatmap=True, grid_res=20
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+"""
 import umap
 
 
 def umap_landscape(csv_path, n_neighbors=30, min_dist=0.1):
-    """
-    UMAP projection of 4D motor space → 2D landscape
-    colored by voltage
-    """
 
     # -------------------
     # 1. Load data
@@ -273,7 +281,7 @@ if __name__ == "__main__":
 
 
 
-"""
+
 
 import numpy as np
 import pandas as pd

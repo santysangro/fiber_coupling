@@ -2,9 +2,9 @@
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 from configuration import *
+import time
 
-
-def test_servos(manual_input=False, write=False):
+def test_servos(manual_input=False, write=False, dummy=[3030, 102, 980, 627]):
     # Read and write
     with Servos() as servos:
         positions = servos.read()
@@ -21,16 +21,25 @@ def test_servos(manual_input=False, write=False):
 
                 servos.write(goal_positions)
             else:
-                servos.write([2146, 1148, 1039, 769])
+                servos.write(dummy)
 
 def test_picoscope():
     pico = Picoscope(voltage_range='PS2000_2V')
-    pico.get_voltage(CHANNEL='A')
-    pico.get_voltage(CHANNEL='B')
+    vol = pico.get_voltage(CHANNEL='A')
+    pico.get_voltage(CHANNEL='B') 
+    return vol
 
+
+from controller.fiber_coupling import FiberCoupling
 if __name__ == '__main__':
-    test_servos(write=True)
-    test_picoscope()
+    f = FiberCoupling()
+    time_0 = time.time()
+    best_pos = f.run_optimization(n_iterations=300, dataset_len=700)
+    time_1 = time.time()
+    print("Duration: ", time_1 - time_0)
+    test_servos(write=True, dummy=[best_pos[0], best_pos[1], best_pos[2], best_pos[3]])
+    x = test_picoscope()
+    print(x)
 
 """ GP:
 Learned kernel: 0.727**2 * RBF(length_scale=100) + WhiteKernel(noise_level=0.119)

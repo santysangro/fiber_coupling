@@ -1,9 +1,7 @@
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel, Matern
 import numpy as np
-from controller.servos import Servos
-from controller.picoscope import Picoscope
-from Model.run_experiment_fiber_coupling import run_experiment
+from model.run_experiment_fiber_coupling import run_experiment
 import time
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
@@ -27,6 +25,8 @@ class GaussianProcessModel:
         self.best_x = None
         self.lock_mode = False
         self.lock_threshold = 100
+        self.X_data = None
+        self.y_data = None
         pass
 
     def normalize_X(self, X):
@@ -41,16 +41,18 @@ class GaussianProcessModel:
         return mean + kappa * std
 
 
-    def suggest_next_point(self):
+    def suggest_next_point(self, max_iterations=100):
         def objective(x):
                 x = np.clip(x, 0, 1).reshape(1, -1)
                 mean, std = self.gp.predict(x, return_std=True)
                 return -(mean + 2.0 * std)
             
-        if self.iteration > 74:
-            intial = self.normalize_X(self.best_x)
-            x0 = intial + np.random.normal(0, 0.005, size=self.motor_num)
-            x0 = np.clip(x0, 0,1)
+        
+        if self.iteration > 0.7 * max_iterations:
+            x0 = self.normalize_X(self.best_x)
+            x0 = x0 + np.random.normal(0, 0.05, size=self.motor_num)
+            x0 = np.clip(x0, 0, 1)
+
         else:
             x0 = np.random.uniform(0, 1, self.motor_num)
 
@@ -59,32 +61,113 @@ class GaussianProcessModel:
         return res.x
     
 
-    def train_gp_from_csv(self):
-
-        data = pd.read_csv(self.csv_path).values
-
-        X = data[:, :self.motor_num]   # motors
-        y = data[:, self.motor_num]    # voltage
-
-        # normalize
-        X = X / self.normalize_X
-
-        print("Training GP...")
-        self.gp_model.train(X, y)
-
-        print("GP training complete.")
-
-    
     def train(self, X, y):
         self.gp.fit(X, y)
         print("Learned kernel:", self.gp.kernel_)
 
         
-        #return self
+
+
+    def update(self, X_new, y_new):
+            """
+            Add new observation and retrain GP.
+            """
+            X_new = np.atleast_2d(X_new)
+            y_new = np.atleast_1d(y_new)
+
+            if self.X_data is None:
+                self.X_data = X_new
+                self.y_data = y_new
+            else:
+                self.X_data = np.vstack((self.X_data, X_new))
+                self.y_data = np.append(self.y_data, y_new)
+
+            # Track best
+            if y_new > self.best_value:
+                self.best_value = y_new
+                self.best_x = self.denormalize_X(X_new[0])
+
+            # Retrain GP
+            self.gp.fit(self.X_data, self.y_data)
+
+            self.iteration += 1
+
+
+    
 
 
 
-    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
     def run(self):
         picoscope = Picoscope()
         with Servos() as servos:
@@ -164,9 +247,8 @@ class GaussianProcessModel:
         plt.savefig(f"Data/gp_1d_dim{dim}.png", dpi=300)
         plt.show()
         plt.close()
-    """
 
-"""
+
 import pandas as pd
 import time
 # load dataset

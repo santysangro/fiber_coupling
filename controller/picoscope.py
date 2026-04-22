@@ -5,13 +5,13 @@ import time
 from picosdk.ps2000 import ps2000
 from picosdk.functions import assert_pico2000_ok, adc2mV
 from picosdk.PicoDeviceEnums import picoEnum
-
+from configuration import PICOSCOPE_RANGE
 import matplotlib.pyplot as plt
 
 
 class Picoscope:
 
-    def __init__(self, samples=2000, oversampling=1, voltage_range='PS2000_2V'):
+    def __init__(self, samples=2000, oversampling=1, voltage_range=PICOSCOPE_RANGE):
         self.samples = samples
         self.oversampling = oversampling
         self.voltage_range = voltage_range

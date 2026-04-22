@@ -1,12 +1,12 @@
 import customtkinter as ctk
-
+from controller.fiber_coupling import FiberCoupling
 
 class FiberCouplingFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
 
         self.grid_columnconfigure(0, weight=1)
-
+        self.fiberCoupling = FiberCoupling()
         # Title
         self.title = ctk.CTkLabel(
             self,
@@ -33,7 +33,7 @@ class FiberCouplingFrame(ctk.CTkFrame):
 
     def start_alignment(self):
         print("Starting scratch alignment...")
-
+        self.fiberCoupling.run_optimization()
         # TODO: later connect:
         # - servo scan
         # - pico signal read
