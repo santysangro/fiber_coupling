@@ -14,3 +14,6 @@ M-LOOP_logs/
 
 #Data
 Data
+#Stuff I used for plotting
+combined_plots.py
+test_hysteresis_fc.py

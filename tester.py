@@ -26,42 +26,30 @@ def test_servos(manual_input=False, write=False, dummy=[3030, 102, 980, 627]):
 def test_picoscope():
     pico = Picoscope(voltage_range='PS2000_2V')
     vol = pico.get_voltage(CHANNEL='A')
-    pico.get_voltage(CHANNEL='B') 
+    print(vol)
+    #pico.get_voltage(CHANNEL='B') 
     return vol
 
 
 from controller.fiber_coupling import FiberCoupling
+import numpy as np
+
 if __name__ == '__main__':
-    f = FiberCoupling()
+
+    #test_servos(write=True, dummy=SERVOS_TEST_POS)
+    test_picoscope()
+    """
+    min_bound = np.subtract(SERVOS_TEST_POS, [1500, 1500, 1500, 1500, 1000])
+    max_bound = np.add(SERVOS_TEST_POS, [1500, 1500, 1500, 1500, 1000])
+
+    f = FiberCoupling(min_boundary=min_bound, max_boundary=max_bound)
     time_0 = time.time()
-    best_pos = f.run_optimization(n_iterations=300, dataset_len=700)
+    best_pos = f.run_full_optimization(global_samples=250, 
+                                       bo_iterations=200, 
+                                       local_step=30, 
+                                       local_rounds=5, 
+                                       validation_measurements=10, 
+                                       load_global_scan=False)
     time_1 = time.time()
     print("Duration: ", time_1 - time_0)
-    test_servos(write=True, dummy=[best_pos[0], best_pos[1], best_pos[2], best_pos[3]])
-    x = test_picoscope()
-    print(x)
-
-""" GP:
-Learned kernel: 0.727**2 * RBF(length_scale=100) + WhiteKernel(noise_level=0.119)
-Best motor position: [2604  812  649  334]
-Predicted voltage: 347.8436954633137
-ACTUAL VALUES: 
-Servo_ID: 005, Pos: 2604, Speed: 000
-Servo_ID: 006, Pos: 812, Speed: 000
-Servo_ID: 007, Pos: 649, Speed: 000
-Servo_ID: 008, Pos: 334, Speed: 000
-Voltage: 23.68541520432142 mV
-
-NEW ONE:
-(.venv) santy@MacBook-Pro-de-Santiago fiber_coupling % python gaussian_process.py 
-Learned kernel: 0.773**2 * RBF(length_scale=116) + WhiteKernel(noise_level=0.143)
-Best motor position: [2291 1105  588  469]
-Predicted voltage: 367.4722594468197
-ACTUAL: 
-Servo_ID: 005, Pos: 2291, Speed: 000
-Servo_ID: 006, Pos: 1105, Speed: 000
-Servo_ID: 007, Pos: 588, Speed: 000
-Servo_ID: 008, Pos: 469, Speed: 000
-Voltage: 1779.474166081728 mV
-Voltage: 2000.0 mV
-"""
+    """

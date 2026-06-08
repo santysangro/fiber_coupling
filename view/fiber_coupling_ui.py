@@ -1,12 +1,15 @@
 import customtkinter as ctk
 from controller.fiber_coupling import FiberCoupling
-
+import numpy as np
+from configuration import SERVOS_TEST_POS
 class FiberCouplingFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
 
         self.grid_columnconfigure(0, weight=1)
-        self.fiberCoupling = FiberCoupling()
+        min_bound = np.subtract(SERVOS_TEST_POS, [200, 200, 200, 200, 100])
+        max_bound = np.add(SERVOS_TEST_POS, [200, 200, 200, 200, 100])
+        self.fiberCoupling = FiberCoupling(min_boundary=min_bound, max_boundary=max_bound)
         # Title
         self.title = ctk.CTkLabel(
             self,

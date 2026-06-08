@@ -1,5 +1,5 @@
 from configuration import M_LOOP_ITERATIONS, SERVOS_TEST_POS
-from Model.run_experiment_fiber_coupling import run_experiment
+from model.run_experiment_fiber_coupling import run_experiment
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 import time
@@ -56,13 +56,13 @@ def run_mloop():
 
     # Next create the controller. Provide it with your interface and any options you want to set
     num_servos = len(init_positions)
-    min_boundary = [0,0]#, 794,736] #[max(2547, 0) for pos in init_positions] #pos - MLOOP_RANGE
-    max_boundary = [4090, 4090]#, 1194, 936] #[min(2847, 4095) for pos in init_positions]
+    min_boundary = [0,0,0,0]#, 794,736] #[max(2547, 0) for pos in init_positions] #pos - MLOOP_RANGE
+    max_boundary = [4090, 4090, 4090, 4090]#, 1194, 936] #[min(2847, 4095) for pos in init_positions]
 
     controller = mlc.create_controller(interface,
                                         controller_type= 'gaussian_process',
                                        max_num_runs=100, #M_LOOP_ITERATIONS,
-                                       num_params=2,#num_servos,
+                                       num_params=4,#num_servos,
                                        min_boundary=min_boundary,
                                        max_boundary=max_boundary,
                                        cost_has_noise=True,

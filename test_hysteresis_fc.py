@@ -9,24 +9,24 @@ import csv
 
 class HysteresisFCTest:
     def __init__(self):
-        self.picoscope = Picoscope(voltage_range='PS2000_5V')
+        self.picoscope = Picoscope(voltage_range='PS2000_50MV')
 
     def test_single_motor(self, motor_idx, step=1):
         with Servos() as servos:
-            filename = f"Data/sweep_data_motor_{motor_idx}.csv"
+            filename = f"Data/sweep_data_motor_{motor_idx}_WAVEPLATE.csv"
             with open(filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
 
                 writer.writerow(["iteration", "motor_pos", "voltage", "direction"])
                 base_pos = np.array(SERVOS_TEST_POS.copy())
-                base_pos[motor_idx] -= 700
+                #base_pos[motor_idx] -= 700
                 pos = base_pos.copy()
                 
                 f_cmd, b_cmd = [], []
                 f_meas, b_meas = [], []
 
                 # Forward sweep
-                for x in range(1400):
+                for x in range(4096):
                     print(f'iteration {x}')
                     servos.write(pos)
                     #time.sleep(0.05)
@@ -40,7 +40,7 @@ class HysteresisFCTest:
                     pos[motor_idx] += step
                 print("Now back!")
                 # Backward sweep
-                for j in range(1400):
+                for j in range(4096):
                     print(f'iteration {j}')
                     pos[motor_idx] -= step
                     servos.write(pos)
@@ -81,7 +81,7 @@ class HysteresisFCTest:
         plt.title(f"Hysteresis - Motor {motor_idx}")
         plt.legend()
         plt.grid()
-        plt.savefig(f"Data/full_hysteresis_fc_steps1_motor_{motor_idx}.png", dpi=300)
+        plt.savefig(f"Data/full_hysteresis_fc_steps1_motor_{motor_idx}_WAVEPLATE.png", dpi=300)
         plt.close()
 
     def compute_hysteresis_metrics(self, f_cmd, b_cmd, f_meas, b_meas):

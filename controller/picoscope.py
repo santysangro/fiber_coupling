@@ -6,7 +6,6 @@ from picosdk.ps2000 import ps2000
 from picosdk.functions import assert_pico2000_ok, adc2mV
 from picosdk.PicoDeviceEnums import picoEnum
 from configuration import PICOSCOPE_RANGE
-import matplotlib.pyplot as plt
 
 
 class Picoscope:
@@ -23,6 +22,7 @@ class Picoscope:
         picoEnum.PICO_COUPLING['PICO_DC'],
         ps2000.PS2000_VOLTAGE_RANGE[self.voltage_range],
         )
+        print("Result:", self.res)
         assert_pico2000_ok(self.res)
 
         self.res = ps2000.ps2000_set_channel(
@@ -116,27 +116,13 @@ class Picoscope:
             ps2000.ps2000_stop(self.device.handle)
 
             channel_mv = adc2mV(buffer, ps2000.PS2000_VOLTAGE_RANGE[self.voltage_range], c_int16(32767))
-            #end = time.time()
-            #channel_b_mv = adc2mV(buffer_b, ps2000.PS2000_VOLTAGE_RANGE['PS2000_50MV'], c_int16(32767))
+
             if channel_overflow:
-                #print("OVERSATURATED!! :(")
+                print("OVERSATURATED!! Increase voltage range :(")
                 return 
-            """
-            fig, ax = plt.subplots()
-            ax.set_xlabel('time/ms')
-            ax.set_ylabel('voltage/mV')
-            ax.plot(list(map(lambda x: x * 1e-6, times[:])), channel_a_mv[:])
-            #ax.plot(list(map(lambda x: x * 1e-6, times[:])), channel_b_mv[:])
-
-            if channel_a_overflow:
-                ax.text(0.01, 0.01, 'Overflow present', color='red', transform=ax.transAxes)
-                #REMINDER THROW A WARNING IF SATURATED
-
-            plt.savefig(f"signal_at_fiber.png")
-            """
+            
             average = np.average(channel_mv)
-            #print(f"Voltage: {average} mV")
-            #print("DURATION OF ACQUISITION: ", end - start)
+            print(f"Voltage: {average} mV")
             std_dev = np.std(channel_mv)  # per-acquisition SD
             return average, std_dev
     

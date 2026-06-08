@@ -75,7 +75,7 @@ class WriteServosFrame(ctk.CTkFrame):
                 raise ValueError("Negative values are not allowed")
 
             with Servos() as servos:
-                servos.precise_write(positions)
+                servos.write(positions)
 
             self.output_text.insert(
                 tk.END, f"Servo positions set to {positions}\n")
