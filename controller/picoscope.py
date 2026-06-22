@@ -64,7 +64,6 @@ class Picoscope:
     def get_voltage(self, CHANNEL='A'):
 
             timebase, interval = self.get_timebase(self.device, 1_00)
-
             collection_time = c_int32()
 
             res = ps2000.ps2000_run_block(
@@ -118,8 +117,8 @@ class Picoscope:
             channel_mv = adc2mV(buffer, ps2000.PS2000_VOLTAGE_RANGE[self.voltage_range], c_int16(32767))
 
             if channel_overflow:
-                print("OVERSATURATED!! Increase voltage range :(")
-                return 
+                print(f"OVERSATURATED!! Increase voltage range :(")
+                return 2000, 0
             
             average = np.average(channel_mv)
             print(f"Voltage: {average} mV")

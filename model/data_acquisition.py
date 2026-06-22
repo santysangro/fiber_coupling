@@ -25,10 +25,10 @@ class DataAcquisition:
         Open to implement other search types.
         """
         if self.search_type == "LatinHypercube":
-            min_boundary = np.asarray(min_boundary, dtype=float)[:4]
-            max_boundary = np.asarray(max_boundary, dtype=float)[:4]
+            min_boundary = np.asarray(min_boundary, dtype=float)
+            max_boundary = np.asarray(max_boundary, dtype=float)
 
-            sampler = LatinHypercube(d=4)
+            sampler = LatinHypercube(d=5)
             X = sampler.random(n=self.num_samples)
             X = qmc.scale(X, min_boundary, max_boundary)
 
@@ -40,38 +40,26 @@ class DataAcquisition:
         self.num_samples = sample_size
 
         if min_boundary is None:
-            min_boundary = [0, 0, 0, 0]
+            min_boundary = [0, 0, 0, 0, 0]
         if max_boundary is None:
-            max_boundary = [4095, 4095, 4095, 4095]
-
-        min_boundary = np.asarray(min_boundary, dtype=float)
-        max_boundary = np.asarray(max_boundary, dtype=float)
-
-        angular_min = min_boundary[:4]
-        angular_max = max_boundary[:4]
-
-        fixed_z = SERVOS_TEST_POS[4]
+            max_boundary = [4095, 4095, 4095, 4095, 4095]
 
         try:
             with open(self.data_path, mode="w", newline="") as file:
                 writer = csv.writer(file)
 
-                X = self.search_structure(angular_min, angular_max)
+                X = self.search_structure(min_boundary, max_boundary)
 
-                motor_headers = [f"m{i}" for i in range(4)]
-                writer.writerow(motor_headers + ["voltage_mV", "std_mV"])
+                writer.writerow(["m0", "m1", "m2", "m3", "z", "voltage_mV", "std_mV"])
 
                 with Servos() as servos:
                     for i, pos in enumerate(X):
                         print(f"Point {i+1}/{self.num_samples}: {pos}")
 
                         try:
-                            pos = np.clip(pos, angular_min, angular_max)
-
-                            full_pos = np.append(pos, fixed_z)
-                            full_pos = np.round(full_pos).astype(int).tolist()
-
-                            servos.write(full_pos)
+                            pos = np.clip(pos, min_boundary, max_boundary)
+                            pos = np.round(pos).astype(int).tolist()
+                            servos.write(pos)
                             time.sleep(self.settle_time)
 
                             voltage, std = picoscope.get_voltage()
@@ -88,14 +76,14 @@ class DataAcquisition:
 
         print("Finished generating training data")
 
-    def load_dataset(self):
-        """
-        Load dataset from CSV
-        Assumes: first N (in this case 4) columns = motor positions, last column = voltage
-        """
-        data = pd.read_csv(self.data_path).values
-        X = data[:, :-2]   # all columns except last
-        y = data[:, 4]    # second-to-last column (voltage) [last column is sd]
+    def load_dataset(self, include_z=False):
+        df = pd.read_csv(self.data_path)
+        if include_z: 
+            X = df[["m0", "m1", "m2", "m3", "z"]].values
+        else: 
+            X = df[["m0", "m1", "m2", "m3"]].values
+
+        y = df["voltage_mV"].values
 
         return X, y
 

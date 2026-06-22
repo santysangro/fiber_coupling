@@ -36,7 +36,7 @@ import numpy as np
 
 if __name__ == '__main__':
 
-    #test_servos(write=True, dummy=SERVOS_TEST_POS)
+    #test_servos(write=True, dummy=[600, 3866, 2164, 755, 11])
     test_picoscope()
     """
     min_bound = np.subtract(SERVOS_TEST_POS, [1500, 1500, 1500, 1500, 1000])

@@ -1,0 +1,39 @@
+{
+  "intial_best_pos": [
+    1118,
+    3451,
+    2082,
+    683,
+    0
+  ],
+  "initial_best_voltage": 4025.8935361796925,
+  "initial_pos": [
+    1118,
+    3451,
+    2082,
+    683,
+    0
+  ],
+  "min_boundary": [
+    1068.0,
+    3401.0,
+    2032.0,
+    633.0,
+    0.0
+  ],
+  "max_boundary": [
+    1168.0,
+    3501.0,
+    2132.0,
+    733.0,
+    200.0
+  ],
+  "opt_config": {
+    "global_samples": 50,
+    "bo_iterations": 30,
+    "local_step": 15,
+    "local_z_step": 10,
+    "local_rounds": 5,
+    "validation_measurements": 10
+  }
+}

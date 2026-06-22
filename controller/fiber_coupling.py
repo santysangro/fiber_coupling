@@ -2,11 +2,10 @@ from model.data_acquisition import DataAcquisition
 from model.gaussian_process import GaussianProcessModel
 from controller.servos import Servos
 from controller.picoscope import Picoscope
-from configuration import SERVOS_TEST_POS
+from configuration import SERVOS_TEST_POS, PICOSCOPE_RANGE
 
 import numpy as np
 import time
-from datetime import datetime
 from pathlib import Path
 
 IMPROVEMENT_THRESHOLD = 5 #Improvement threshold for FC refinement loop.
@@ -19,12 +18,10 @@ class FiberCoupling:
         oversampling=10,
         min_boundary=None,
         max_boundary=None,
+        center=SERVOS_TEST_POS
     ):
-        date_folder = datetime.now().strftime("%Y-%m-%d")
-        folder = Path("Data") / date_folder
-        folder.mkdir(parents=True, exist_ok=True)
-
-        self.csv_path = str(folder / Path(csv_path).name)
+        self.csv_path = str(Path(csv_path))
+        Path(self.csv_path).parent.mkdir(parents=True, exist_ok=True)
         self.settle_time = settle_time
         self.oversampling = oversampling
 
@@ -37,6 +34,7 @@ class FiberCoupling:
         gp_min_boundary=np.asarray(self.min_boundary)[:4]
         gp_max_boundary=np.asarray(self.max_boundary)[:4]
         self.gp_model = GaussianProcessModel(min_boundary=gp_min_boundary, max_boundary=gp_max_boundary)
+        self.center = center
 
         self.progress = 0
         self.pico = None
@@ -48,7 +46,7 @@ class FiberCoupling:
   
     def initialize_hardware(self):
         if self.pico is None:
-            self.pico = Picoscope()
+            self.pico = Picoscope(voltage_range=PICOSCOPE_RANGE)
 
     def close_hardware(self):
         if self.pico is not None:
@@ -94,7 +92,7 @@ class FiberCoupling:
             n_iterations=bo_iterations,
         )
         if len(best_x_bo) == 4:
-            best_x_bo = np.append(best_x_bo, SERVOS_TEST_POS[4])
+            best_x_bo = np.append(best_x_bo, self.center[4])
 
         previous_best = best_y_bo
         best_x_current = best_x_bo
@@ -129,7 +127,7 @@ class FiberCoupling:
         validated_voltage, validated_std = self.validate_position(
             best_x_local,
             n_measurements=validation_measurements,
-            move_away=True
+            move_away=False
         )
 
         self.best_x_real = np.asarray(best_x_local, dtype=float).copy()
@@ -145,7 +143,7 @@ class FiberCoupling:
 
     #  ---- STEP1:  global scan ----
 
-    def generate_dataset(self, load_only=False, n_samples=5000):
+    def generate_dataset(self, load_only=False, n_samples=5000, include_z=False):
         if not load_only:
             print("Starting Latin Hypercube sampling...")
 
@@ -161,12 +159,13 @@ class FiberCoupling:
 
             print("Dataset generated:", self.csv_path)
 
-        return self.data_acq.load_dataset()
+        return self.data_acq.load_dataset(include_z=include_z)
 
-    def run_global_scan(self, n_samples=500, load_only=False):
+    def run_global_scan(self, n_samples=500, load_only=False, include_z=False):
         X, y = self.generate_dataset(
             load_only=load_only,
             n_samples=n_samples,
+            include_z=include_z,
         )
 
         X = np.asarray(X, dtype=float)
@@ -225,10 +224,9 @@ class FiberCoupling:
             next_x_norm = self.gp_model.suggest_next_point(n_iterations)
             next_x = self.gp_model.denormalize_X(next_x_norm)
             next_x = np.asarray(next_x, dtype=float).reshape(-1)
-            next_x = self._clip_to_boundaries(next_x, dims=4)
             t1 = time.time()
 
-            next_x_full = np.append(next_x, SERVOS_TEST_POS[4])
+            next_x_full = np.append(next_x, self.center[4])
             voltage, voltage_std = self._measure(next_x_full)
             t2 = time.time()
 
@@ -280,7 +278,6 @@ class FiberCoupling:
         Divide z range into equal spaced points and just go over them and measure voltage.
         """
         current_x = np.asarray(start_x, dtype=float).reshape(-1)
-        current_x = self._clip_to_boundaries(current_x)
 
         if len(current_x) <= z_dim:
             raise ValueError(f"z_dim={z_dim} but position only has {len(current_x)} dimensions. ")
@@ -369,14 +366,12 @@ class FiberCoupling:
 
             improved_this_round = False
 
-            for dim in range(len(current_x)):
+            for dim in range(4):#len(current_x)):
                 candidates = []
 
                 for direction in [-1, 1]:
                     candidate_x = current_x.copy()
                     candidate_x[dim] += direction * step
-                    candidate_x = self._clip_to_boundaries(candidate_x)
-
                     voltage, voltage_std = self._measure(candidate_x, settle_time=self.settle_time, refinement=True)
                     candidates.append((candidate_x, voltage, voltage_std, direction))
 
@@ -390,7 +385,7 @@ class FiberCoupling:
                     key=lambda item: item[1],
                 )
 
-                if best_candidate_y > current_y + 2 * current_std:
+                if best_candidate_y > current_y + current_std:
                     current_x = best_candidate_x.copy()
                     current_y = float(best_candidate_y)
                     current_std = float(best_candidate_std)
@@ -438,7 +433,6 @@ class FiberCoupling:
         Repeatedly measure a candidate best position.
         """
         x = np.asarray(x, dtype=float).reshape(-1)
-        x = self._clip_to_boundaries(x)
 
         voltages = []
 
@@ -446,9 +440,8 @@ class FiberCoupling:
             if move_away:
                 away_x = x.copy()
                 away_x[0] += away_step
-                away_x = self._clip_to_boundaries(away_x)
-                self._move_servos(away_x, settle_time=self.settle_time)
-            voltage, voltage_std = self._measure(x, settle_time=self.settle_time)
+                self._move_servos(away_x, settle_time=self.settle_time, use_search_bounds=False)
+            voltage, voltage_std = self._measure(x, settle_time=self.settle_time, refinement=True)
             voltages.append(voltage)
 
             print(
@@ -490,11 +483,10 @@ class FiberCoupling:
 
         x = np.asarray(x, dtype=float).reshape(-1)
         if refinement: #For refinement it's not confined to determined boundaries but to physical ones 
-            x = np.clip(x, 0, 4095)
+            self._move_servos(x, settle_time=settle_time, use_search_bounds=False)
         else:
-            x = self._clip_to_boundaries(x)
+            self._move_servos(x, settle_time=settle_time)
 
-        self._move_servos(x, settle_time=settle_time, use_search_bounds=False)
         voltages = []
         for _ in range(oversampling):
             v, _ = self.pico.get_voltage()
@@ -515,45 +507,12 @@ class FiberCoupling:
             x = self._clip_to_boundaries(x)
         else:
             x = np.clip(x, 0, 4095)
+
         x_write = np.round(x).astype(int).tolist()
 
         with Servos() as servos:
             servos.write(x_write)
             time.sleep(settle_time)
-
-    def _make_local_initial_dataset(self, center_x, radius=50):
-        """
-        Create a small local dataset around the current position:
-            center, plus +/- radius in each servo dimension.
-        """
-        center_x = np.asarray(center_x, dtype=float).reshape(-1)
-        center_x = self._clip_to_boundaries(center_x)
-
-        X_local = []
-        y_local = []
-
-        voltage, voltage_std = self._measure(center_x)
-        X_local.append(center_x.copy())
-        y_local.append(voltage)
-
-        print(f"Center voltage: {voltage:.6f} ± {voltage_std:.6f}")
-
-        for dim in range(len(center_x)):
-            for direction in [-1, 1]:
-                x_probe = center_x.copy()
-                x_probe[dim] += direction * radius
-                x_probe = self._clip_to_boundaries(x_probe)
-
-                voltage, voltage_std = self._measure(x_probe)
-                X_local.append(x_probe.copy())
-                y_local.append(voltage)
-
-                print(
-                    f"Local probe dim {dim}, direction {direction:+d}: "
-                    f"{voltage:.6f} ± {voltage_std:.6f}"
-                )
-
-        return np.asarray(X_local, dtype=float), np.asarray(y_local, dtype=float)
 
 
     def _clip_to_boundaries(self, x, dims=None):

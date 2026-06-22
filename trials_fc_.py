@@ -57,14 +57,14 @@ from controller.picoscope import Picoscope
 
 # IMPORTANT: Set this to your manually optimized 5D position [m0, m1, m2, m3, z].
 # If SERVOS_TEST_POS already stores your manual best, leave this as SERVOS_TEST_POS.
-MANUAL_BEST_POS = np.asarray(SERVOS_TEST_POS, dtype=float)
+MANUAL_BEST_POS = np.asarray([600, 3866, 2164, 755, 11], dtype=float)
 
 # IMPORTANT: Update this to the manually observed best voltage in the same PD gain /
 # Picoscope range settings used during the experiment.
 MANUAL_BEST_VOLTAGE = 1555  # mV
 
 # Start with 10-20 for a pilot. Use 50-100 for final statistics.
-N_TRIALS = 100
+N_TRIALS = 1
 RANDOM_SEED = 10
 
 # Random initial perturbation applied before each trial.
@@ -83,7 +83,7 @@ OPT_CONFIG = {
     "global_samples": 50,
     "bo_iterations": 30,
     "local_step": 15,
-    "local_z_step": 10, #I USED 5
+    "local_z_step": 10,
     "local_rounds": 5,
     "validation_measurements": 10,
 }
@@ -91,7 +91,7 @@ OPT_CONFIG = {
 # Measurement settings
 SETTLE_AFTER_INITIAL_MOVE_S = 1.0
 INITIAL_MEASUREMENTS = 10
-PICOSCOPE_RANGE = "PS2000_2V"  # change if needed
+PICOSCOPE_RANGE = "PS2000_5V"  # change if needed
 
 # Success thresholds relative to manual best
 SUCCESS_THRESHOLDS = [0.80, 0.90, 0.95, 0.99]

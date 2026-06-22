@@ -14,6 +14,18 @@ M-LOOP_logs/
 
 #Data
 Data
-#Stuff I used for plotting
+#Stuff I used for plotting / random tests
 combined_plots.py
 test_hysteresis_fc.py
+analize_fc_landscape.py
+chec_data.py
+large_missaligment_trials.py
+make_another_plot.py
+plots.py
+tester.py
+trials_fc.py
+2Dgridmap.py
+plots_large_missaligment.py
+trials_fc_.py
+trials_fc.py
+zzz_plot.py
