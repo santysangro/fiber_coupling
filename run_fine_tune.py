@@ -10,7 +10,7 @@ from controller.fiber_coupling import FiberCoupling
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 
-from configuration import PICOSCOPE_RANGE, SERVOS_INTIAL_POS, SEARCH_ANGULAR_RANGE, SEARCH_Z_RANGE
+from configuration import PICOSCOPE_RANGE, SERVOS_INTIAL_POS
 
 
 # --- User settings ----
@@ -30,6 +30,8 @@ OPT_CONFIG = {
     "validation_measurements": 10,
 }
 
+SEARCH_ANGULAR_RANGE = 50
+SEARCH_Z_RANGE = 200
 # Measurement settings
 SETTLE_AFTER_INITIAL_MOVE_S = 1.0
 INITIAL_MEASUREMENTS = 10
