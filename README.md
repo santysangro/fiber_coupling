@@ -175,50 +175,6 @@ FINE_RANGE = np.asarray([200, 200, 200, 200, 200])
 
 The final output of this stage is the estimated optimal actuator configuration together with the corresponding measured coupling signal.
 
-
-# Broad range: CENTER_POS +- RANGE_BROAD.
-# With CENTER_POS=2048 and RANGE_BROAD=2000, this searches approx 48..4048.
-RANGE_BROAD = np.asarray([2000, 2000, 2000, 2000, 2000], dtype=float)
-
-BROAD_GLOBAL_SAMPLES = 3000
-
-# How many measured points from broad scan to consider for clustering.
-BROAD_TOP_N_FOR_CLUSTERING = 30
-
-# How many distinct high-voltage clusters to keep.
-N_CLUSTERS = 5
-
-# Minimum distance between cluster representatives in full 5D servo space.
-# Increase this if top clusters are still essentially the same point.
-CLUSTER_DISTANCE_STEPS = 1000
-
-
-# Medium search box around each cluster center.
-MEDIUM_RANGE = np.asarray([500, 500, 500, 500, 500], dtype=float)
-
-MEDIUM_OPT_CONFIG = {
-    "global_samples": 250,
-    "bo_iterations": 30,
-    "local_step": 40,
-    "local_z_step": 30,
-    "local_rounds": 5,
-    "validation_measurements": 5,
-}
-
-
-FINE_RANGE = np.asarray([200, 200, 200, 200, 200], dtype=float)
-
-FINE_OPT_CONFIG = {
-    "global_samples": 100,
-    "bo_iterations": 30,
-    "local_step": 20,
-    "local_z_step": 10,
-    "local_rounds": 6,
-    "validation_measurements": 10,
-}
-
-DATASETS_FOLDER = "datasets"
-
 ### Configuration Parameters
 
 The following parameters can be modified in `configuration.py`:
