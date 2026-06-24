@@ -429,9 +429,6 @@ class FiberCoupling:
     # ---- STEP4: validation ----
 
     def validate_position(self, x, n_measurements=10, move_away=False, away_step=20):
-        """
-        Repeatedly measure a candidate best position.
-        """
         x = np.asarray(x, dtype=float).reshape(-1)
 
         voltages = []
@@ -468,10 +465,6 @@ class FiberCoupling:
     # Some helper functions 
 
     def _measure(self, x, oversampling=None, settle_time=None, refinement=False):
-        """
-        Move servos to position x and measure mean PicoScope voltage.
-        Returns:mean_voltage, std_voltage
-        """
         if self.pico is None:
             self.initialize_hardware()
 

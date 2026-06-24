@@ -17,11 +17,8 @@ import mloop.visualizations as mlv  # type: ignore
 class CustomInterface(mli.Interface):
 
     def __init__(self):
-        # You must include the super command to call the parent class, Interface, constructor
         super(CustomInterface, self).__init__()
 
-        # Attributes of the interface can be added here
-        # If you want to precalculate any variables etc. this is the place to do it
         self.picoscope = Picoscope(voltage_range='PS2000_2V')
 
     # You must include the get_next_cost_dict method in your class
