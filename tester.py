@@ -2,7 +2,6 @@
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 from configuration import *
-import time
 
 def test_servos(manual_input=False, write=False, dummy=[3030, 102, 980, 627]):
     # Read and write
@@ -24,9 +23,9 @@ def test_servos(manual_input=False, write=False, dummy=[3030, 102, 980, 627]):
                 servos.write(dummy)
 
 def test_picoscope():
-    pico = Picoscope(voltage_range='PS2000_2V')
-    vol = pico.get_voltage(CHANNEL='A')
-    print(vol)
+    pico = Picoscope(voltage_range='PS2000_5V')
+    vol, sd = pico.get_voltage(CHANNEL='A')
+    print(vol, sd)
     #pico.get_voltage(CHANNEL='B') 
     return vol
 
@@ -36,7 +35,7 @@ import numpy as np
 
 if __name__ == '__main__':
 
-    #test_servos(write=True, dummy=[600, 3866, 2164, 755, 11])
+    test_servos(write=True, dummy=[1880])
     test_picoscope()
     """
     min_bound = np.subtract(SERVOS_TEST_POS, [1500, 1500, 1500, 1500, 1000])

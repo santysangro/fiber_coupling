@@ -1,10 +1,9 @@
 import numpy as np
-from configuration import SERVOS_TEST_POS
+from configuration import SERVOS_INTIAL_POS
 from controller.picoscope import Picoscope
 from controller.servos import Servos
 import matplotlib.pyplot as plt
-from scservo_sdk import *  # type: ignore
-import time
+from scservo_sdk import * 
 import csv
 
 class HysteresisFCTest:
@@ -18,7 +17,7 @@ class HysteresisFCTest:
                 writer = csv.writer(file)
 
                 writer.writerow(["iteration", "motor_pos", "voltage", "direction"])
-                base_pos = np.array(SERVOS_TEST_POS.copy())
+                base_pos = np.array(SERVOS_INTIAL_POS.copy())
                 #base_pos[motor_idx] -= 700
                 pos = base_pos.copy()
                 
@@ -62,16 +61,6 @@ class HysteresisFCTest:
 
     def plot_hysteresis(self, motor_idx, f_cmd, b_cmd, f_meas, b_meas):
         all_vals = np.concatenate([f_meas, b_meas])
-        mn, mx = all_vals.min(), all_vals.max()
-
-        # Avoid division by zero
-        if mx == mn:
-            f_norm = f_meas
-            b_norm = b_meas
-        else:
-            f_norm = (f_meas - mn) / (mx - mn)
-            b_norm = (b_meas - mn) / (mx - mn)
-
         plt.figure()
         plt.plot(f_cmd, f_meas, label="Forward", marker='o')
         plt.plot(b_cmd, b_meas, label="Backward", marker='o')
@@ -98,9 +87,9 @@ class HysteresisFCTest:
         }
     
     def run_all(self):
-        num_motors = len(SERVOS_TEST_POS)
+        num_motors = len(SERVOS_INTIAL_POS)
 
-        for m in [0,1]:#range(num_motors):
+        for m in range(num_motors):
             print(f"\nTesting motor {m}")
             f_cmd, b_cmd, f_meas, b_meas = self.test_single_motor(m)
 

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 import time
@@ -11,20 +10,14 @@ from controller.fiber_coupling import FiberCoupling
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 
-from configuration import PICOSCOPE_RANGE
+from configuration import PICOSCOPE_RANGE, SERVOS_INTIAL_POS, SEARCH_ANGULAR_RANGE, SEARCH_Z_RANGE
 
 
-# ---- User settings ----
-
-# If SERVOS_TEST_POS already stores your manual best, leave this as SERVOS_TEST_POS.
-#Otherwise add None
-INITIAL_BEST_POS = np.asarray([1118, 3451, 2082, 683, 0]) #np.asarray([569, 3811, 2097, 770, 206], dtype=float)
+# --- User settings ----
 
 
 # Search box around MANUAL_BEST_POS used by the optimizer.
-# Keep this small if the aim is specifically local recovery.
-SEARCH_ANGULAR_RANGE = 50
-SEARCH_Z_RANGE = 200
+# Keep SMALL if the aim is specifically local recovery (but values depend on experimental setup ).
 
 # Optimization budget per trial.
 # For local recovery, BO can often be modest; local/z refinement usually matters most.
@@ -40,22 +33,20 @@ OPT_CONFIG = {
 # Measurement settings
 SETTLE_AFTER_INITIAL_MOVE_S = 1.0
 INITIAL_MEASUREMENTS = 10
-#PICOSCOPE_RANGE = "PS2000_2V"  # change if needed
 
-# Safety bounds for servos
 SERVO_MIN = 0
 SERVO_MAX = 4095
 
 
 
 
-def save_json(path: Path, obj: Dict) -> None:
+def save_json(path: Path, obj: Dict):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2)
 
 # -------------- Helper functions to measure initial voltage & define your boundaries -------------
 
-def measure_voltage(n: int = 10) -> Tuple[float, float]:
+def measure_voltage(n: int = 10):
     pico = Picoscope(voltage_range=PICOSCOPE_RANGE)
     values = []
     try:
@@ -71,16 +62,16 @@ def measure_voltage(n: int = 10) -> Tuple[float, float]:
 def clip_position(x: np.ndarray) -> np.ndarray:
     return np.clip(np.asarray(x, dtype=float), SERVO_MIN, SERVO_MAX)
 
-def make_bounds(center: np.ndarray, radius: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def make_bounds(center: np.ndarray, radius: np.ndarray):
     center = np.asarray(center, dtype=float).reshape(-1)
     radius = np.asarray(radius, dtype=float).reshape(-1)
     if len(center) != 5 or len(radius) != 5:
         raise ValueError("center and radius must both be 5D arrays.")
     return clip_position(center - radius), clip_position(center + radius)
     
-# Main optimization loop
 
-def run_fine_tune(output_root: Path, initial_pos=INITIAL_BEST_POS, load_json=False):
+# Main optimization loop
+def run_fine_tune(output_root: Path, initial_pos=SERVOS_INTIAL_POS, load_json=False):
     settings_dir = output_root
     settings_dir.mkdir(parents=True, exist_ok=True)
 
@@ -103,10 +94,11 @@ def run_fine_tune(output_root: Path, initial_pos=INITIAL_BEST_POS, load_json=Fal
         ])
         min_b, max_b = make_bounds(initial_pos, radius)
 
-    print("Initial position:", np.round(initial_pos).astype(int))
     with Servos() as servos:
         servos.write(initial_pos)
         time.sleep(SETTLE_AFTER_INITIAL_MOVE_S)
+
+    print("Initial position:", np.round(initial_pos).astype(int))
     initial_voltage, initial_std = measure_voltage(n=INITIAL_MEASUREMENTS)
     print(f"Initial voltage: {initial_voltage:.6f} ± {initial_std:.6f} mV")
 
@@ -142,15 +134,14 @@ def run_fine_tune(output_root: Path, initial_pos=INITIAL_BEST_POS, load_json=Fal
 
     final_x = np.asarray(final_x, dtype=float).reshape(-1)
     if len(final_x) == 4:
-        final_x = np.append(final_x, INITIAL_BEST_POS[4])
+        final_x = np.append(final_x, SERVOS_INTIAL_POS[4])
 
 
     percent_recovered=float(100.0 * final_voltage / initial_voltage)
-    print(f"Final voltage: {final_voltage:.6f} ± {final_std:.6f} mV")
+    print(f"Final voltage: {final_voltage:.6f} +- {final_std:.6f} mV")
     print(f"Recovered: {percent_recovered:.2f}% of manual best")
     print(f"Duration: {duration_s:.1f} s")
 
 
 if __name__ == "__main__":
     run_fine_tune(output_root=Path("settings"))
-

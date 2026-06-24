@@ -1,0 +1,1003 @@
+
+import json
+import time
+from dataclasses import dataclass, asdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from controller.fiber_coupling import FiberCoupling
+from controller.servos import Servos
+from controller.picoscope import Picoscope
+
+from configuration import PICOSCOPE_RANGE
+
+# --------------------- Settings ---------------------
+
+# "No information" center. This is the middle of the 0-4095 servo range.
+CENTER_POS = np.asarray([2048, 2048, 2048, 2048, 2048], dtype=float)
+
+# Physical servo safety limits.
+SERVO_MIN = 0
+SERVO_MAX = 4095
+
+# Optional manual reference for reporting only.
+# Set to None if you do not want percentages relative to manual best.
+MANUAL_REFERENCE_VOLTAGE = None
+
+# Output folder
+EXPERIMENT_NAME = "fc_large_misalignment"
+
+# Measurement settings
+INITIAL_MEASUREMENTS = 10
+
+# Stage 1: massive broad scan
+
+# Broad range: CENTER_POS +- RANGE_BROAD.
+# With CENTER_POS=2048 and RANGE_BROAD=2000, this searches approx 48..4048.
+RANGE_BROAD = np.asarray([2000, 2000, 2000, 2000, 2000], dtype=float)
+
+BROAD_GLOBAL_SAMPLES = 3000
+
+# How many measured points from broad scan to consider for clustering.
+BROAD_TOP_N_FOR_CLUSTERING = 30
+
+# How many distinct high-voltage clusters to keep.
+N_CLUSTERS = 5
+
+# Minimum distance between cluster representatives in full 5D servo space.
+# Increase this if top clusters are still essentially the same point.
+CLUSTER_DISTANCE_STEPS = 1000
+
+
+# Medium search box around each cluster center.
+MEDIUM_RANGE = np.asarray([500, 500, 500, 500, 500], dtype=float)
+
+MEDIUM_OPT_CONFIG = {
+    "global_samples": 250,
+    "bo_iterations": 30,
+    "local_step": 40,
+    "local_z_step": 30,
+    "local_rounds": 5,
+    "validation_measurements": 5,
+}
+
+
+FINE_RANGE = np.asarray([200, 200, 200, 200, 200], dtype=float)
+
+FINE_OPT_CONFIG = {
+    "global_samples": 100,
+    "bo_iterations": 30,
+    "local_step": 20,
+    "local_z_step": 10,
+    "local_rounds": 6,
+    "validation_measurements": 10,
+}
+
+# Plot settings
+SAVE_PLOTS = True
+PLOT_DPI = 250
+
+# Storage layout
+DATASETS_FOLDER = "datasets"
+PLOTS_FOLDER = "plots"
+GP_FOLDER = "gp_diagnostics"
+
+# GP diagnostic settings. These plots fit a diagnostic GP from the saved regional
+# dataset after each optimization stage. They do not affect the actual optimizer.
+SAVE_GP_DIAGNOSTICS = True
+GP_DIAGNOSTIC_GRID_SIZE = 45
+GP_DIAGNOSTIC_MAX_POINTS = 600
+GP_DIAGNOSTIC_PAIRS = [(0, 1), (2, 3), (0, 2), (1, 2)]
+
+# Helpers
+
+def now_output_dir() -> Path:
+    date_folder = datetime.now().strftime("%Y-%m-%d")
+    time_folder = datetime.now().strftime("%H-%M-%S")
+    out = Path("Data") / date_folder / f"{EXPERIMENT_NAME}_{time_folder}"
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def save_json(path: Path, obj: Dict) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2)
+
+
+def clip_position(x: np.ndarray) -> np.ndarray:
+    return np.clip(np.asarray(x, dtype=float), SERVO_MIN, SERVO_MAX)
+
+
+def make_bounds(center: np.ndarray, radius: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    center = np.asarray(center, dtype=float).reshape(-1)
+    radius = np.asarray(radius, dtype=float).reshape(-1)
+    if len(center) != 5 or len(radius) != 5:
+        raise ValueError("center and radius must both be 5D arrays.")
+    return clip_position(center - radius), clip_position(center + radius)
+
+
+def move_servos(position: np.ndarray, settle_time: float = 1.0) -> None:
+    pos = np.round(clip_position(position)).astype(int).tolist()
+    with Servos() as servos:
+        servos.write(pos)
+        time.sleep(settle_time)
+
+
+def measure_voltage(n: int = 10) -> Tuple[float, float]:
+    pico = Picoscope(voltage_range=PICOSCOPE_RANGE)
+    values = []
+    try:
+        for _ in range(n):
+            voltage, _ = pico.get_voltage()
+            values.append(float(voltage))
+    finally:
+        try:
+            pico.close_device()
+        except Exception:
+            pass
+
+    values = np.asarray(values, dtype=float)
+    std = float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
+    return float(np.mean(values)), std
+
+
+def history_to_dataframe(history: List[Dict]) -> pd.DataFrame:
+    rows = []
+    for item in history:
+        row = dict(item)
+        for key in ["x_real", "x_full", "best_x"]:
+            if key in row and row[key] is not None:
+                arr = np.asarray(row.pop(key), dtype=float).reshape(-1)
+                for i, value in enumerate(arr):
+                    suffix = "z" if i == 4 else str(i)
+                    row[f"{key}_{suffix}"] = float(value)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def standardize_dataset_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Try to standardize datasets generated by DataAcquisition.
+    """
+    df = df.copy()
+
+    # If already named, return.
+    if all(c in df.columns for c in ["m0", "m1", "m2", "m3", "z", "voltage_mV"]):
+        return df
+
+    # Rename by position.
+    cols = list(df.columns)
+    if len(cols) >= 6:
+        rename = {
+            cols[0]: "m0",
+            cols[1]: "m1",
+            cols[2]: "m2",
+            cols[3]: "m3",
+            cols[4]: "z",
+            cols[5]: "voltage_mV",
+        }
+        if len(cols) >= 7:
+            rename[cols[6]] = "std_mV"
+        df = df.rename(columns=rename)
+
+    return df
+
+
+def load_stage_dataset(csv_path: Path) -> pd.DataFrame:
+    df = pd.read_csv(csv_path)
+    return standardize_dataset_columns(df)
+
+
+def get_position_columns(df: pd.DataFrame) -> List[str]:
+    if "z" in df.columns:
+        return ["m0", "m1", "m2", "m3", "z"]
+    return ["m0", "m1", "m2", "m3"]
+
+
+def greedy_top_clusters(df: pd.DataFrame, top_n: int, n_clusters: int, min_distance: float) -> pd.DataFrame:
+    """
+    Greedy clustering by distance:
+    1 -> Sort points by measured voltage descending.
+    2 -> Keep a point if it is at least min_distance away from already selected centers.
+    """
+    df = standardize_dataset_columns(df)
+    if "voltage_mV" not in df.columns:
+        raise ValueError("Dataset must contain a voltage_mV column.")
+
+    pos_cols = get_position_columns(df)
+    candidates = df.sort_values("voltage_mV", ascending=False).head(top_n).copy()
+
+    selected_rows = []
+    selected_positions = []
+
+    for _, row in candidates.iterrows():
+        pos = row[pos_cols].values.astype(float)
+        if not selected_positions:
+            selected_rows.append(row)
+            selected_positions.append(pos)
+        else:
+            distances = [np.linalg.norm(pos - p) for p in selected_positions]
+            if min(distances) >= min_distance:
+                selected_rows.append(row)
+                selected_positions.append(pos)
+
+        if len(selected_rows) >= n_clusters:
+            break
+
+    # Fallback: if clustering distance was too strict, fill remaining with top unused points.
+    if len(selected_rows) < n_clusters:
+        selected_indices = {int(r.name) for r in selected_rows}
+        for idx, row in candidates.iterrows():
+            if int(idx) not in selected_indices:
+                selected_rows.append(row)
+                if len(selected_rows) >= n_clusters:
+                    break
+
+    clusters = pd.DataFrame(selected_rows).reset_index(drop=True)
+    clusters.insert(0, "cluster_id", np.arange(1, len(clusters) + 1))
+
+    # Keep only useful columns first.
+    ordered = ["cluster_id"] + pos_cols + ["voltage_mV"]
+    remaining = [c for c in clusters.columns if c not in ordered]
+    clusters = clusters[ordered + remaining]
+
+    return clusters
+
+
+@dataclass
+class StageResult:
+    stage: str
+    region_id: int
+    center_x0: float
+    center_x1: float
+    center_x2: float
+    center_x3: float
+    center_x4_z: float
+    final_x0: float
+    final_x1: float
+    final_x2: float
+    final_x3: float
+    final_x4_z: float
+    final_voltage: float
+    final_std: float
+    reference_percent: float
+    duration_s: float
+    run_dir: str
+    history_csv: str
+    dataset_csv: str
+
+
+
+def ensure_subdirs(root: Path) -> Dict[str, Path]:
+    """Create standard subfolders and return their paths."""
+    folders = {
+        "datasets": root / DATASETS_FOLDER,
+        "plots": root / PLOTS_FOLDER,
+        "gp": root / GP_FOLDER,
+    }
+    for folder in folders.values():
+        folder.mkdir(parents=True, exist_ok=True)
+    return folders
+
+
+def save_dataframe_standardized(csv_path: Path, out_path: Path) -> Optional[Path]:
+    """Save a standardized copy of a measured dataset if the source exists."""
+    if not csv_path.exists():
+        return None
+    df = load_stage_dataset(csv_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_path, index=False)
+    return out_path
+
+
+def save_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert common Python/numpy objects into JSON-safe values."""
+    try:
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, (np.integer, np.floating)):
+            return value.item()
+        if isinstance(value, (list, tuple)):
+            return [_json_safe(v) for v in value]
+        if isinstance(value, dict):
+            return {str(k): _json_safe(v) for k, v in value.items()}
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+    except Exception:
+        pass
+    return repr(value)
+
+
+def find_gp_like_objects(obj: Any, max_depth: int = 3) -> List[Tuple[str, Any]]:
+    """
+    Try to find fitted GP-like objects inside FiberCoupling.
+    """
+    found: List[Tuple[str, Any]] = []
+    seen = set()
+
+    def visit(current: Any, path: str, depth: int) -> None:
+        if current is None or depth < 0:
+            return
+        obj_id = id(current)
+        if obj_id in seen:
+            return
+        seen.add(obj_id)
+
+        has_kernel = hasattr(current, "kernel_") or hasattr(current, "kernel")
+        has_predict = hasattr(current, "predict")
+        class_name = current.__class__.__name__.lower()
+        if has_predict and (has_kernel or "gaussianprocess" in class_name or "gp" == class_name):
+            found.append((path, current))
+
+        if depth == 0:
+            return
+
+        # Only inspect reasonably small Python objects. Avoid walking into numpy/pandas internals.
+        if isinstance(current, (str, bytes, int, float, np.ndarray, pd.DataFrame, pd.Series)):
+            return
+        try:
+            attrs = vars(current)
+        except Exception:
+            return
+        for name, child in attrs.items():
+            if name.startswith("__"):
+                continue
+            visit(child, f"{path}.{name}", depth - 1)
+
+    visit(obj, obj.__class__.__name__, max_depth)
+    return found
+
+
+def save_learned_kernels(fc: Any, out_dir: Path) -> None:
+    """Save learned GP kernel."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    gps = find_gp_like_objects(fc)
+    if not gps:
+        save_text(
+            out_dir / "learned_kernel_not_found.txt",
+            "No fitted GP was found inside FiberCoupling.\n"
+        )
+        return
+
+    records = []
+    for idx, (path, gp) in enumerate(gps, start=1):
+        kernel = getattr(gp, "kernel_", getattr(gp, "kernel", None))
+        record = {
+            "index": idx,
+            "object_path": path,
+            "class": gp.__class__.__name__,
+            "kernel_repr": repr(kernel),
+        }
+        for attr in ["theta", "bounds", "log_marginal_likelihood_value_"]:
+            if hasattr(gp, attr):
+                record[attr] = _json_safe(getattr(gp, attr))
+        if kernel is not None:
+            for attr in ["theta", "bounds", "hyperparameters"]:
+                if hasattr(kernel, attr):
+                    record[f"kernel_{attr}"] = _json_safe(getattr(kernel, attr))
+        records.append(record)
+
+    save_json(out_dir / "learned_kernels.json", {"kernels": records})
+    save_text(
+        out_dir / "learned_kernels.txt",
+        "\n\n".join(
+            f"[{r['index']}] {r['object_path']} ({r['class']})\n{r['kernel_repr']}"
+            for r in records
+        ) + "\n",
+    )
+
+
+def plot_cluster_regions(
+    broad_df: pd.DataFrame,
+    clusters_df: pd.DataFrame,
+    out_dir: Path,
+    radius: np.ndarray,
+    dims: Tuple[int, int] = (0, 1),
+) -> None:
+    """Plot selected cluster centers with rectangles showing the medium search box."""
+    broad_df = standardize_dataset_columns(broad_df)
+    xcol = "z" if dims[0] == 4 else f"m{dims[0]}"
+    ycol = "z" if dims[1] == 4 else f"m{dims[1]}"
+    if not all(c in broad_df.columns for c in [xcol, ycol, "voltage_mV"]):
+        return
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(7.5, 6.0))
+    sc = plt.scatter(
+        broad_df[xcol], broad_df[ycol], c=broad_df["voltage_mV"],
+        s=14, alpha=0.55, edgecolors="none",
+    )
+    rx, ry = float(radius[dims[0]]), float(radius[dims[1]])
+    for _, row in clusters_df.iterrows():
+        x, y = float(row[xcol]), float(row[ycol])
+        rect = plt.Rectangle((x - rx, y - ry), 2 * rx, 2 * ry, fill=False, linewidth=1.4)
+        plt.gca().add_patch(rect)
+        plt.scatter([x], [y], s=85, marker="x", linewidths=2.2)
+        plt.text(x, y, f" R{int(row['cluster_id'])}", fontsize=9)
+
+    plt.xlabel(f"{xcol} position [servo steps]")
+    plt.ylabel(f"{ycol} position [servo steps]")
+    plt.title(f"Selected medium search regions: {xcol} vs {ycol}")
+    plt.colorbar(sc, label="Measured voltage [mV]")
+    plt.grid(True, alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(out_dir / f"cluster_regions_{xcol}_vs_{ycol}.png", dpi=PLOT_DPI)
+    plt.close()
+
+
+def plot_gp_diagnostics_from_dataset(
+    dataset_csv: Path,
+    center: np.ndarray,
+    min_b: np.ndarray,
+    max_b: np.ndarray,
+    out_dir: Path,
+    prefix: str,
+) -> None:
+    """
+    Fit a separate diagnostic GP from the stage dataset and save 2D mean/std slices.
+    This is only for visualization; it does not change the experiment optimizer.
+    """
+    if not SAVE_GP_DIAGNOSTICS:
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not dataset_csv.exists():
+        save_text(out_dir / f"{prefix}_gp_diagnostics_skipped.txt", f"Dataset not found: {dataset_csv}\n")
+        return
+
+    try:
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
+    except Exception as exc:
+        save_text(out_dir / f"{prefix}_gp_diagnostics_skipped.txt", f"sklearn GP import failed: {exc}\n")
+        return
+
+    df = load_stage_dataset(dataset_csv)
+    pos_cols = get_position_columns(df)
+    if "voltage_mV" not in df.columns or len(pos_cols) < 2:
+        save_text(out_dir / f"{prefix}_gp_diagnostics_skipped.txt", "Dataset does not have usable position/voltage columns.\n")
+        return
+
+    X = df[pos_cols].values.astype(float)
+    y = df["voltage_mV"].values.astype(float)
+    finite = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    X, y = X[finite], y[finite]
+    if len(y) < 8:
+        save_text(out_dir / f"{prefix}_gp_diagnostics_skipped.txt", f"Too few points for GP diagnostics: {len(y)}\n")
+        return
+
+    if len(y) > GP_DIAGNOSTIC_MAX_POINTS:
+        rng = np.random.default_rng(None)
+        idx = rng.choice(len(y), size=GP_DIAGNOSTIC_MAX_POINTS, replace=False)
+        X, y = X[idx], y[idx]
+
+    # Diagnostic kernel with one length scale per active dimension.
+    kernel = (
+        ConstantKernel(1.0, (1e-3, 1e3))
+        * Matern(length_scale=np.ones(X.shape[1]) * 200.0, length_scale_bounds=(1.0, 5000.0), nu=2.5)
+        + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-9, 1e2))
+    )
+    gp = GaussianProcessRegressor(
+        kernel=kernel,
+        normalize_y=True,
+        n_restarts_optimizer=2,
+    )
+
+    try:
+        gp.fit(X, y)
+    except Exception as exc:
+        save_text(out_dir / f"{prefix}_gp_diagnostics_skipped.txt", f"Diagnostic GP fit failed: {exc}\n")
+        return
+
+    save_text(out_dir / f"{prefix}_diagnostic_gp_kernel.txt", repr(gp.kernel_) + "\n")
+    save_json(out_dir / f"{prefix}_diagnostic_gp_kernel.json", {
+        "kernel_repr": repr(gp.kernel_),
+        "log_marginal_likelihood": float(gp.log_marginal_likelihood_value_),
+        "n_training_points": int(len(y)),
+        "position_columns": pos_cols,
+    })
+
+    base = np.asarray(center, dtype=float).reshape(-1)[: X.shape[1]]
+    min_b = np.asarray(min_b, dtype=float).reshape(-1)[: X.shape[1]]
+    max_b = np.asarray(max_b, dtype=float).reshape(-1)[: X.shape[1]]
+
+    for dim_a, dim_b in GP_DIAGNOSTIC_PAIRS:
+        if dim_a >= X.shape[1] or dim_b >= X.shape[1]:
+            continue
+        a_name = "z" if dim_a == 4 else f"m{dim_a}"
+        b_name = "z" if dim_b == 4 else f"m{dim_b}"
+        aa = np.linspace(min_b[dim_a], max_b[dim_a], GP_DIAGNOSTIC_GRID_SIZE)
+        bb = np.linspace(min_b[dim_b], max_b[dim_b], GP_DIAGNOSTIC_GRID_SIZE)
+        A, B = np.meshgrid(aa, bb)
+        X_pred = np.tile(base, (A.size, 1))
+        X_pred[:, dim_a] = A.ravel()
+        X_pred[:, dim_b] = B.ravel()
+        mean, std = gp.predict(X_pred, return_std=True)
+        mean = mean.reshape(A.shape)
+        std = std.reshape(A.shape)
+
+        plt.figure(figsize=(7.2, 5.8))
+        cf = plt.contourf(A, B, mean, levels=24)
+        plt.scatter(X[:, dim_a], X[:, dim_b], c=y, s=12, edgecolors="none", alpha=0.75)
+        plt.scatter([base[dim_a]], [base[dim_b]], marker="x", s=90, linewidths=2.0)
+        plt.xlabel(f"{a_name} position [servo steps]")
+        plt.ylabel(f"{b_name} position [servo steps]")
+        plt.title(f"{prefix}: diagnostic GP mean slice ({a_name} vs {b_name})")
+        plt.colorbar(cf, label="Predicted voltage [mV]")
+        plt.grid(True, alpha=0.2)
+        plt.tight_layout()
+        plt.savefig(out_dir / f"{prefix}_gp_mean_{a_name}_vs_{b_name}.png", dpi=PLOT_DPI)
+        plt.close()
+
+        plt.figure(figsize=(7.2, 5.8))
+        cf = plt.contourf(A, B, std, levels=24)
+        plt.scatter(X[:, dim_a], X[:, dim_b], s=10, edgecolors="none", alpha=0.45)
+        plt.scatter([base[dim_a]], [base[dim_b]], marker="x", s=90, linewidths=2.0)
+        plt.xlabel(f"{a_name} position [servo steps]")
+        plt.ylabel(f"{b_name} position [servo steps]")
+        plt.title(f"{prefix}: diagnostic GP uncertainty slice ({a_name} vs {b_name})")
+        plt.colorbar(cf, label="Predictive std [mV]")
+        plt.grid(True, alpha=0.2)
+        plt.tight_layout()
+        plt.savefig(out_dir / f"{prefix}_gp_std_{a_name}_vs_{b_name}.png", dpi=PLOT_DPI)
+        plt.close()
+
+def run_optimization_stage(stage: str, region_id: int, center: np.ndarray, radius: np.ndarray, config: Dict, output_root: Path):
+    stage_dir = output_root / stage / f"region_{region_id:02d}"
+    subdirs = ensure_subdirs(stage_dir)
+
+    min_b, max_b = make_bounds(center, radius)
+
+    save_json(stage_dir / "stage_config.json", {
+        "stage": stage,
+        "region_id": region_id,
+        "center": np.asarray(center, dtype=float).tolist(),
+        "radius": np.asarray(radius, dtype=float).tolist(),
+        "min_boundary": min_b.tolist(),
+        "max_boundary": max_b.tolist(),
+        "config": config,
+        "dataset_csv": str(subdirs["datasets"] / "global_scan_dataset.csv"),
+        "standardized_dataset_csv": str(subdirs["datasets"] / "global_scan_dataset_standardized.csv"),
+        "plots_dir": str(subdirs["plots"]),
+        "gp_dir": str(subdirs["gp"]),
+    })
+
+    # Store exactly which broad-scan point/medium result seeded this region.
+    pd.DataFrame([{
+        "stage": stage,
+        "region_id": int(region_id),
+        "center_m0": float(center[0]),
+        "center_m1": float(center[1]),
+        "center_m2": float(center[2]),
+        "center_m3": float(center[3]),
+        "center_z": float(center[4]),
+        "radius_m0": float(radius[0]),
+        "radius_m1": float(radius[1]),
+        "radius_m2": float(radius[2]),
+        "radius_m3": float(radius[3]),
+        "radius_z": float(radius[4]),
+    }]).to_csv(subdirs["datasets"] / "region_center_and_radius.csv", index=False)
+
+    print("\n" + "=" * 80)
+    print(f"{stage.upper()} REGION {region_id}")
+    print("=" * 80)
+    print("Center:", np.round(center).astype(int))
+    print("Min boundary:", np.round(min_b).astype(int))
+    print("Max boundary:", np.round(max_b).astype(int))
+
+    dataset_csv = subdirs["datasets"] / "global_scan_dataset.csv"
+
+    fc = FiberCoupling(
+        csv_path=str(dataset_csv),
+        settle_time=1,
+        oversampling=10,
+        min_boundary=min_b,
+        max_boundary=max_b,
+        center=np.round(center).astype(int),
+    )
+
+    t0 = time.time()
+    final_x, final_voltage, final_std = fc.run_full_optimization(
+        global_samples=int(config["global_samples"]),
+        bo_iterations=int(config["bo_iterations"]),
+        local_step=float(config["local_step"]),
+        local_z_step=float(config["local_z_step"]),
+        local_rounds=int(config["local_rounds"]),
+        validation_measurements=int(config["validation_measurements"]),
+        load_global_scan=False,
+    )
+    duration = time.time() - t0
+
+    final_x = np.asarray(final_x, dtype=float).reshape(-1)
+    if len(final_x) == 4:
+        final_x = np.append(final_x, center[4])
+    final_x = clip_position(final_x)
+
+    history_df = history_to_dataframe(fc.history)
+    history_csv = subdirs["datasets"] / "optimization_history.csv"
+    history_df.to_csv(history_csv, index=False)
+
+    standardized_dataset_csv = subdirs["datasets"] / "global_scan_dataset_standardized.csv"
+    save_dataframe_standardized(dataset_csv, standardized_dataset_csv)
+
+    save_learned_kernels(fc, subdirs["gp"])
+    plot_gp_diagnostics_from_dataset(
+        dataset_csv=dataset_csv,
+        center=final_x,
+        min_b=min_b,
+        max_b=max_b,
+        out_dir=subdirs["gp"],
+        prefix=f"{stage}_region_{region_id:02d}",
+    )
+
+    ref_percent = float("nan")
+    if MANUAL_REFERENCE_VOLTAGE is not None and MANUAL_REFERENCE_VOLTAGE > 0:
+        ref_percent = 100.0 * float(final_voltage) / float(MANUAL_REFERENCE_VOLTAGE)
+
+    result = StageResult(
+        stage=stage,
+        region_id=int(region_id),
+        center_x0=float(center[0]),
+        center_x1=float(center[1]),
+        center_x2=float(center[2]),
+        center_x3=float(center[3]),
+        center_x4_z=float(center[4]),
+        final_x0=float(final_x[0]),
+        final_x1=float(final_x[1]),
+        final_x2=float(final_x[2]),
+        final_x3=float(final_x[3]),
+        final_x4_z=float(final_x[4]),
+        final_voltage=float(final_voltage),
+        final_std=float(final_std),
+        reference_percent=float(ref_percent),
+        duration_s=float(duration),
+        run_dir=str(stage_dir),
+        history_csv=str(history_csv),
+        dataset_csv=str(dataset_csv),
+    )
+
+    pd.DataFrame([asdict(result)]).to_csv(stage_dir / "stage_result.csv", index=False)
+
+    print(f"{stage} region {region_id} final voltage: {final_voltage:.3f} ± {final_std:.3f} mV")
+    if not np.isnan(ref_percent):
+        print(f"Reference percent: {ref_percent:.2f}%")
+    print(f"Duration: {duration/60:.2f} min")
+    print("Dataset:", dataset_csv)
+    print("GP diagnostics:", subdirs["gp"])
+
+    return result, history_df
+
+
+# Plotting
+
+def plot_broad_scan_projection(df: pd.DataFrame, out_dir: Path, dims: Tuple[int, int] = (0, 1)) -> None:
+    df = standardize_dataset_columns(df)
+    xcol = "z" if dims[0] == 4 else f"m{dims[0]}"
+    ycol = "z" if dims[1] == 4 else f"m{dims[1]}"
+    if not all(c in df.columns for c in [xcol, ycol, "voltage_mV"]):
+        return
+
+    plt.figure(figsize=(7.2, 5.8))
+    sc = plt.scatter(
+        df[xcol],
+        df[ycol],
+        c=df["voltage_mV"],
+        s=18,
+        alpha=0.8,
+        edgecolors="none",
+    )
+    plt.xlabel(f"{xcol} position [servo steps]")
+    plt.ylabel(f"{ycol} position [servo steps]")
+    plt.title(f"Broad scan measured samples: {xcol} vs {ycol}")
+    plt.colorbar(sc, label="Measured voltage [mV]")
+    plt.grid(True, alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(out_dir / f"broad_projection_{xcol}_vs_{ycol}.png", dpi=PLOT_DPI)
+    plt.close()
+
+
+def plot_cluster_centers(broad_df: pd.DataFrame, clusters_df: pd.DataFrame, out_dir: Path) -> None:
+    broad_df = standardize_dataset_columns(broad_df)
+    if not all(c in broad_df.columns for c in ["m0", "m1", "voltage_mV"]):
+        return
+
+    plt.figure(figsize=(7.2, 5.8))
+    sc = plt.scatter(
+        broad_df["m0"],
+        broad_df["m1"],
+        c=broad_df["voltage_mV"],
+        s=15,
+        alpha=0.55,
+        edgecolors="none",
+    )
+    plt.scatter(
+        clusters_df["m0"],
+        clusters_df["m1"],
+        s=90,
+        marker="x",
+        linewidths=2.5,
+        label="Selected cluster centers",
+    )
+    for _, row in clusters_df.iterrows():
+        plt.text(row["m0"], row["m1"], str(int(row["cluster_id"])), fontsize=9)
+
+    plt.xlabel("m0 position [servo steps]")
+    plt.ylabel("m1 position [servo steps]")
+    plt.title("Selected broad-search candidate basins")
+    plt.colorbar(sc, label="Measured voltage [mV]")
+    plt.grid(True, alpha=0.25)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(out_dir / "broad_selected_clusters_m0_vs_m1.png", dpi=PLOT_DPI)
+    plt.close()
+
+
+def plot_stage_comparison(results_df: pd.DataFrame, out_dir: Path) -> None:
+    if results_df.empty:
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    plt.figure(figsize=(9, 5))
+    labels = results_df.apply(lambda r: f"{r['stage']} {int(r['region_id'])}", axis=1)
+    x = np.arange(len(results_df))
+    plt.bar(x, results_df["final_voltage"])
+    plt.xticks(x, labels, rotation=45, ha="right")
+    plt.ylabel("Final validated voltage [mV]")
+    plt.title("Large-misalignment hierarchical search results")
+    if MANUAL_REFERENCE_VOLTAGE is not None:
+        plt.axhline(MANUAL_REFERENCE_VOLTAGE, linestyle="--", linewidth=1.5, label="Manual reference")
+        plt.legend()
+    plt.grid(True, axis="y", alpha=0.25)
+    plt.tight_layout()
+    plt.savefig(out_dir / "stage_final_voltage_comparison.png", dpi=PLOT_DPI)
+    plt.close()
+
+
+def save_summary(results: List[StageResult], output_root: Path, broad_best_voltage: float) -> None:
+    results_df = pd.DataFrame([asdict(r) for r in results])
+    results_df.to_csv(output_root / "all_stage_results.csv", index=False)
+
+    if results_df.empty:
+        return
+
+    best = results_df.loc[results_df["final_voltage"].idxmax()]
+    total_duration = results_df["duration_s"].sum()
+
+    summary = {
+        "broad_best_voltage_mV": float(broad_best_voltage),
+        "best_stage": str(best["stage"]),
+        "best_region_id": int(best["region_id"]),
+        "best_final_voltage_mV": float(best["final_voltage"]),
+        "best_final_std_mV": float(best["final_std"]),
+        "best_position": [
+            float(best["final_x0"]),
+            float(best["final_x1"]),
+            float(best["final_x2"]),
+            float(best["final_x3"]),
+            float(best["final_x4_z"]),
+        ],
+        "manual_reference_voltage_mV": MANUAL_REFERENCE_VOLTAGE,
+        "reference_percent": float(best["reference_percent"]),
+        "total_duration_min": float(total_duration / 60.0),
+    }
+    summary["expected_layout"] = {
+        "broad_datasets": str(output_root / "broad_scan" / DATASETS_FOLDER),
+        "broad_plots": str(output_root / "broad_scan" / PLOTS_FOLDER),
+        "medium_regions": str(output_root / "medium" / "region_XX"),
+        "fine_regions": str(output_root / "fine" / "region_XX"),
+        "region_datasets": f"region_XX/{DATASETS_FOLDER}",
+        "region_gp_diagnostics": f"region_XX/{GP_FOLDER}",
+    }
+    save_json(output_root / "summary.json", summary)
+
+    with open(output_root / "summary.txt", "w", encoding="utf-8") as f:
+        f.write("Large-misalignment fiber-coupling experiment summary\n")
+        f.write("=" * 60 + "\n")
+        for k, v in summary.items():
+            f.write(f"{k}: {v}\n")
+
+
+# Main experiment
+
+def main() -> None:
+    output_root = now_output_dir()
+    print("Output folder:", output_root)
+
+    broad_min, broad_max = make_bounds(CENTER_POS, RANGE_BROAD)
+
+    save_json(output_root / "experiment_config.json", {
+        "center_pos": CENTER_POS.tolist(),
+        "range_broad": RANGE_BROAD.tolist(),
+        "broad_min": broad_min.tolist(),
+        "broad_max": broad_max.tolist(),
+        "broad_global_samples": BROAD_GLOBAL_SAMPLES,
+        "broad_top_n_for_clustering": BROAD_TOP_N_FOR_CLUSTERING,
+        "n_clusters": N_CLUSTERS,
+        "cluster_distance_steps": CLUSTER_DISTANCE_STEPS,
+        "medium_range": MEDIUM_RANGE.tolist(),
+        "medium_opt_config": MEDIUM_OPT_CONFIG,
+        "fine_range": FINE_RANGE.tolist(),
+        "fine_opt_config": FINE_OPT_CONFIG,
+        "manual_reference_voltage": MANUAL_REFERENCE_VOLTAGE,
+        "picoscope_range": PICOSCOPE_RANGE,
+    })
+
+    # Stage 1: one massive broad LHS scan only
+    print("\n" + "=" * 80)
+    print("STAGE 1: MASSIVE BROAD LHS SCAN")
+    print("=" * 80)
+    print("Broad center:", CENTER_POS)
+    print("Broad min:", broad_min)
+    print("Broad max:", broad_max)
+
+    broad_dir = output_root / "broad_scan"
+    broad_subdirs = ensure_subdirs(broad_dir)
+
+    fc_broad = FiberCoupling(
+        csv_path=str(broad_subdirs["datasets"] / "broad_global_scan_dataset.csv"),
+        settle_time=1,
+        oversampling=10,
+        min_boundary=broad_min,
+        max_boundary=broad_max,
+    )
+    LOAD_EXISTING_BROAD_SCAN = False
+
+    if LOAD_EXISTING_BROAD_SCAN:
+
+        broad_csv = r"C:\Users\eqela\Desktop\fiber_coupling\Data\2026-06-09\broad_global_scan_dataset.csv"
+
+        broad_df = standardize_dataset_columns(pd.read_csv(broad_csv))
+        pos_cols = get_position_columns(broad_df)
+        X_broad = broad_df[pos_cols].values
+        y_broad = broad_df["voltage_mV"].values
+        broad_df.to_csv(broad_subdirs["datasets"] / "broad_global_scan_loaded_standardized.csv", index=False)
+
+        broad_duration = 0
+
+        print(f"Loaded existing broad scan: {broad_csv}")
+        print("Dataset shape:", X_broad.shape)
+
+    else:
+
+        fc_broad.initialize_hardware()
+
+        t0 = time.time()
+
+        X_broad, y_broad = fc_broad.run_global_scan(
+            n_samples=BROAD_GLOBAL_SAMPLES,
+            load_only=False,
+            include_z=True
+        )
+
+        fc_broad.close_hardware()
+
+        broad_duration = time.time() - t0
+
+        # The DataAcquisition file should already exist, but save a standardized copy too.
+        broad_df = pd.DataFrame(X_broad, columns=["m0", "m1", "m2", "m3", "z"][: X_broad.shape[1]])
+        broad_df["voltage_mV"] = y_broad
+        broad_df.to_csv(broad_subdirs["datasets"] / "broad_global_scan_standardized.csv", index=False)
+        save_json(broad_subdirs["datasets"] / "broad_scan_info.json",
+            {
+                "n_samples": int(BROAD_GLOBAL_SAMPLES),
+                "duration_s": float(broad_duration),
+                "duration_min": float(broad_duration / 60.0),
+            },
+        )
+    broad_best_idx = int(np.argmax(y_broad))
+    broad_best_x = np.asarray(X_broad[broad_best_idx], dtype=float).reshape(-1)
+    if len(broad_best_x) == 4:
+        broad_best_x = np.append(broad_best_x, CENTER_POS[4])
+    broad_best_y = float(y_broad[broad_best_idx])
+
+    print("Broad scan best position:", broad_best_x)
+    print(f"Broad scan best voltage: {broad_best_y:.3f} mV")
+    print(f"Broad scan duration: {broad_duration/60:.2f} min")
+
+    # Cluster best measured broad points
+    clusters_df = greedy_top_clusters(
+        broad_df,
+        top_n=BROAD_TOP_N_FOR_CLUSTERING,
+        n_clusters=N_CLUSTERS,
+        min_distance=CLUSTER_DISTANCE_STEPS,
+    )
+    if "z" not in clusters_df.columns:
+        clusters_df["z"] = CENTER_POS[4]
+
+    clusters_csv = broad_subdirs["datasets"] / "broad_top_cluster_centers.csv"
+    clusters_df.to_csv(clusters_csv, index=False)
+    print("\nSelected cluster centers:")
+    print(clusters_df[["cluster_id", "m0", "m1", "m2", "m3", "z", "voltage_mV"]])
+
+    if SAVE_PLOTS:
+        plot_broad_scan_projection(broad_df, broad_subdirs["plots"], dims=(0, 1))
+        plot_broad_scan_projection(broad_df, broad_subdirs["plots"], dims=(0, 2))
+        plot_broad_scan_projection(broad_df, broad_subdirs["plots"], dims=(1, 2))
+        plot_broad_scan_projection(broad_df, broad_subdirs["plots"], dims=(2, 3))
+        plot_cluster_centers(broad_df, clusters_df, broad_subdirs["plots"])
+        plot_cluster_regions(broad_df, clusters_df, broad_subdirs["plots"], MEDIUM_RANGE, dims=(0, 1))
+        plot_cluster_regions(broad_df, clusters_df, broad_subdirs["plots"], MEDIUM_RANGE, dims=(2, 3))
+        plot_cluster_regions(broad_df, clusters_df, broad_subdirs["plots"], MEDIUM_RANGE, dims=(0, 4))
+
+    # Stage 2: Medium optimization around each cluster
+    all_results: List[StageResult] = []
+
+    medium_results = []
+    for itera, row in clusters_df.iterrows():
+        region_id = int(row["cluster_id"])
+        center = row[["m0", "m1", "m2", "m3", "z"]].values.astype(float)
+        result, _ = run_optimization_stage(
+                stage="medium",
+                region_id=region_id,
+                center=center,
+                radius=MEDIUM_RANGE,
+                config=MEDIUM_OPT_CONFIG,
+                output_root=output_root,
+        )
+        all_results.append(result)
+        medium_results.append(result)
+
+            # Save continuously.
+        save_summary(all_results, output_root, broad_best_voltage=broad_best_y)
+        plot_stage_comparison(pd.DataFrame([asdict(r) for r in all_results]), output_root / PLOTS_FOLDER)
+
+    medium_df = pd.DataFrame([asdict(r) for r in medium_results])
+    medium_df.to_csv(output_root / "medium_results.csv", index=False)
+
+    if medium_df.empty:
+        raise RuntimeError("No medium results were completed.")
+
+    best_medium = medium_df.loc[medium_df["final_voltage"].idxmax()]
+    best_medium_center = np.asarray([
+        best_medium["final_x0"],
+        best_medium["final_x1"],
+        best_medium["final_x2"],
+        best_medium["final_x3"],
+        best_medium["final_x4_z"],
+    ], dtype=float)
+
+    print("\nBest medium result:")
+    print(best_medium[["region_id", "final_voltage", "final_std", "reference_percent"]])
+    print("Best medium position:", best_medium_center)
+
+    # Stage 3: fine optimization around best medium result
+    fine_result, _ = run_optimization_stage(
+        stage="fine",
+        region_id=int(best_medium["region_id"]),
+        center=best_medium_center,
+        radius=FINE_RANGE,
+        config=FINE_OPT_CONFIG,
+        output_root=output_root,
+    )
+    all_results.append(fine_result)
+
+    save_summary(all_results, output_root, broad_best_voltage=broad_best_y)
+
+    final_results_df = pd.DataFrame([asdict(r) for r in all_results])
+    final_results_df.to_csv(output_root / "all_stage_results.csv", index=False)
+
+    if SAVE_PLOTS:
+        plot_stage_comparison(final_results_df, output_root / PLOTS_FOLDER)
+
+    print("\n" + "=" * 80)
+    print("LARGE-MISALIGNMENT EXPERIMENT COMPLETE")
+    print("=" * 80)
+    print("Output:", output_root)
+    print("Cluster centers:", clusters_csv)
+    print("All results:", output_root / "all_stage_results.csv")
+    print("Summary:", output_root / "summary.txt")
+
+
+if __name__ == "__main__":
+    for i in range(50): #number of trials 
+        main()

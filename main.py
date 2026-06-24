@@ -19,9 +19,6 @@ class App:
 
         paddings = {"padx": 10, "pady": 10}
 
-        # ======================
-        # Title
-        # ======================
         self.title_label = ctk.CTkLabel(
             root,
             text="Fiber Coupling",
@@ -29,9 +26,6 @@ class App:
         )
         self.title_label.grid(row=0, column=0, columnspan=3, pady=15)
 
-        # ======================
-        # Column 1: Servos
-        # ======================
         self.servos_frame = ctk.CTkFrame(root)
         self.servos_frame.grid(row=1, column=0, sticky="nsew", **paddings)
 
@@ -44,9 +38,7 @@ class App:
         self.write_servos_frame = WriteServosFrame(self.servos_frame)
         self.write_servos_frame.grid(row=1, column=0, sticky="nsew", **paddings)
 
-        # ======================
-        # Column 2: Picoscope
-        # ======================
+
         self.pico_frame = ctk.CTkFrame(root)
         self.pico_frame.grid(row=1, column=1, sticky="nsew", **paddings)
 
@@ -55,24 +47,19 @@ class App:
 
         self.red_signal_frame = ReadPicoscopeFrame(self.pico_frame)
         self.red_signal_frame.grid(row=0, column=0, sticky="nsew", **paddings)
-        # ======================
-        # Column 3: Fiber Coupling
-        # ======================
+
+
         self.fiber_frame = ctk.CTkFrame(root)
         self.fiber_frame.grid(row=1, column=2, sticky="nsew", **paddings)
 
         self.fiber_frame.grid_rowconfigure((0, 1), weight=1)
         self.fiber_frame.grid_columnconfigure(0, weight=1)
 
-        # ----------------------
-        # Scratch alignment (coarse)
-        # ----------------------
+
         self.scratch_frame = FiberCouplingFrame(self.fiber_frame)
         self.scratch_frame.grid(row=0, column=0, sticky="nsew", **paddings)
 
-        # ----------------------
-        # Fine tuning (optimization)
-        # ----------------------
+
         self.tuning_frame = FineTuningFrame(self.fiber_frame)
         self.tuning_frame.grid(row=1, column=0, sticky="nsew", **paddings)
 

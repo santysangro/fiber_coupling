@@ -6,9 +6,9 @@ from controller.servos import Servos
 
 
 def run_experiment(params, picoscope):
-    yaw_1, yaw_2, pitch_2, pitch_1 = params #probably this is not accurate anymore
+    z, yaw_1, yaw_2, pitch_2, pitch_1 = params
     sts_goal_positions = [
-        #math.floor(z),
+        math.floor(z),
         math.floor(yaw_1), 
         math.floor(yaw_2),
         math.floor(pitch_2),

@@ -1,7 +1,6 @@
 from ctypes import byref, c_byte, c_int16, c_int32, sizeof
 from time import sleep
 import numpy as np
-import time
 from picosdk.ps2000 import ps2000
 from picosdk.functions import assert_pico2000_ok, adc2mV
 from picosdk.PicoDeviceEnums import picoEnum

@@ -56,8 +56,8 @@ def run_mloop():
 
     # Next create the controller. Provide it with your interface and any options you want to set
     num_servos = len(init_positions)
-    min_boundary = [0,0,0,0]#, 794,736] #[max(2547, 0) for pos in init_positions] #pos - MLOOP_RANGE
-    max_boundary = [4090, 4090, 4090, 4090]#, 1194, 936] #[min(2847, 4095) for pos in init_positions]
+    min_boundary = [0,0,0,0,0]#, 794,736] #[max(2547, 0) for pos in init_positions] #pos - MLOOP_RANGE
+    max_boundary = [4090, 4090, 4090, 4090, 4090]#, 1194, 936] #[min(2847, 4095) for pos in init_positions]
 
     controller = mlc.create_controller(interface,
                                         controller_type= 'gaussian_process',

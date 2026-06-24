@@ -12,17 +12,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from scipy.stats import binned_statistic_2d
 from scipy.stats import binned_statistic
-# Optional UMAP. Script still works if umap-learn is not installed.
-try:
-    import umap
-    HAS_UMAP = True
-except ImportError:
-    HAS_UMAP = False
-
-
-# =========================
-# USER SETTINGS
-# =========================
+import umap
 
 DATA_ROOT = Path(r"C:\Users\eqela\Desktop\fiber_coupling\Data")
 
@@ -46,10 +36,6 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 ABS_THRESHOLD_MV = 1000.0
 REL_THRESHOLD_FRACTION = 0.20
 
-
-# =========================
-# DATA LOADING
-# =========================
 
 def load_all_data():
     dfs = []
@@ -166,10 +152,6 @@ def plot_binned_max_surface(high, xcol="m0", ycol="m2", bins=50):
     plt.close()
 
 
-# =========================
-# LINEAR PAIR PLOTS
-# =========================
-
 def plot_pair_fit(high, xcol, ycol, filename):
     x = high[xcol].to_numpy().reshape(-1, 1)
     y = high[ycol].to_numpy()
@@ -219,10 +201,6 @@ def make_pair_plots(high):
     print("\nLinear fits for high-coupling manifold:")
     print(fit_df.round(4))
 
-
-# =========================
-# PCA 3D
-# =========================
 
 def make_3d_pca(high):
     X = high[ACTUATOR_COLS].to_numpy()
@@ -287,17 +265,9 @@ def make_3d_pca(high):
     return pca_df, scaler, pca
 
 
-# =========================
-# REDUCED MANIFOLD SURFACE PLOTS
-# =========================
-
 def plot_reduced_surface(high, xcol="m0", ycol="m2"):
     """
-    Plot coupling voltage as an interpolated 2D/3D surface over reduced coordinates.
-
-    Since m1 is strongly correlated with m0 and m3 is strongly correlated with m2,
-    the high-coupling manifold can be approximately viewed using m0, m2, and z.
-    This function plots V(m0, m2).
+    Plot coupling voltage as an 2D/3D surface over reduced coordinates.
     """
 
     x = high[xcol].to_numpy()
@@ -310,9 +280,6 @@ def plot_reduced_surface(high, xcol="m0", ycol="m2"):
 
     Z = griddata((x, y), v, (X, Y), method="linear")
 
-    # -------------------------
-    # 2D interpolated contour
-    # -------------------------
     plt.figure(figsize=(8, 6))
     im = plt.contourf(X, Y, Z, levels=50)
     sc = plt.scatter(x, y, c=v, s=12, edgecolors="k", linewidths=0.2, alpha=0.75)
@@ -325,9 +292,6 @@ def plot_reduced_surface(high, xcol="m0", ycol="m2"):
     plt.savefig(OUTPUT_DIR / f"reduced_surface_{xcol}_{ycol}_contour.png", dpi=300)
     plt.close()
 
-    # -------------------------
-    # 3D surface
-    # -------------------------
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
 
@@ -346,9 +310,6 @@ def plot_reduced_surface(high, xcol="m0", ycol="m2"):
     print(f"\nReduced surface plots saved for V({xcol}, {ycol}).")
 
 
-# =========================
-# UMAP
-# =========================
 
 def make_umap(high):
     if not HAS_UMAP:
@@ -403,12 +364,6 @@ def make_umap(high):
 
     print("\nUMAP plots saved.")
 
-# =========================
-# Z-AXIS / FOCUS TREND
-# =========================
-# =========================
-# PCA EXPLAINED VARIANCE
-# =========================
 
 def plot_pca_explained_variance(explained):
     explained_pct = explained * 100
@@ -440,189 +395,6 @@ def plot_pca_explained_variance(explained):
 
     print("\nClean PCA explained variance plot saved.")
 
-def make_combined_manifold_figure_4panel(high):
-    import matplotlib as mpl
-
-    mpl.rcParams.update({
-        "font.size": 10,
-        "axes.titlesize": 11,
-        "axes.labelsize": 10,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
-        "legend.fontsize": 9,
-    })
-
-    X = high[ACTUATOR_COLS].to_numpy()
-    Xn = StandardScaler().fit_transform(X)
-
-    pca = PCA(n_components=5)
-    pca.fit(Xn)
-    explained_pct = pca.explained_variance_ratio_ * 100
-    loadings = pca.components_.T
-    voltage = high[VOLTAGE_COL].to_numpy()
-
-    fig = plt.figure(figsize=(12, 8))
-    gs = fig.add_gridspec(
-        2, 3,
-        width_ratios=[1, 1, 0.055],
-        height_ratios=[1, 1],
-        wspace=0.32,
-        hspace=0.42,
-    )
-
-    axA = fig.add_subplot(gs[0, 0])
-    axB = fig.add_subplot(gs[0, 1])
-    caxV = fig.add_subplot(gs[0, 2])
-    axC = fig.add_subplot(gs[1, 0])
-    axD = fig.add_subplot(gs[1, 1])
-    caxL = fig.add_subplot(gs[1, 2])
-
-    cmap_voltage = "viridis"
-    fit_color = "crimson"
-
-    # ---------- A ----------
-    x = high["m0"].to_numpy().reshape(-1, 1)
-    y = high["m1"].to_numpy()
-    model = LinearRegression().fit(x, y)
-    r2 = r2_score(y, model.predict(x))
-
-    x_line = np.linspace(x.min(), x.max(), 300).reshape(-1, 1)
-
-    sc = axA.scatter(
-        high["m0"], high["m1"],
-        c=voltage,
-        cmap=cmap_voltage,
-        s=7,
-        alpha=0.55,
-        rasterized=True,
-    )
-    axA.plot(x_line.ravel(), model.predict(x_line), color=fit_color, lw=2.4)
-
-    axA.set_xlabel(r"$m_0$ [steps]")
-    axA.set_ylabel(r"$m_1$ [steps]")
-    axA.set_title(
-        rf"$m_1 = {model.coef_[0]:.2f}m_0 {model.intercept_:+.0f}$"
-        + "\n"
-        + rf"$R^2 = {r2:.3f}$"
-    )
-    axA.grid(alpha=0.2)
-
-    # ---------- B ----------
-    x = high["m2"].to_numpy().reshape(-1, 1)
-    y = high["m3"].to_numpy()
-    model = LinearRegression().fit(x, y)
-    r2 = r2_score(y, model.predict(x))
-
-    x_line = np.linspace(x.min(), x.max(), 300).reshape(-1, 1)
-
-    axB.scatter(
-        high["m2"], high["m3"],
-        c=voltage,
-        cmap=cmap_voltage,
-        s=7,
-        alpha=0.55,
-        rasterized=True,
-    )
-    axB.plot(x_line.ravel(), model.predict(x_line), color=fit_color, lw=2.4)
-
-    axB.set_xlabel(r"$m_2$ [steps]")
-    axB.set_ylabel(r"$m_3$ [steps]")
-    axB.set_title(
-        rf"$m_3 = {model.coef_[0]:.2f}m_2 {model.intercept_:+.0f}$"
-        + "\n"
-        + rf"$R^2 = {r2:.3f}$"
-    )
-    axB.grid(alpha=0.2)
-
-    cbar = fig.colorbar(sc, cax=caxV)
-    cbar.set_label("Voltage [mV]")
-
-    # ---------- C ----------
-    labels = [f"PC{i}" for i in range(1, 6)]
-    bars = axC.bar(labels, explained_pct, edgecolor="black", linewidth=0.6)
-
-    axC.set_ylabel("Explained variance [%]")
-    axC.set_xlabel("Principal component")
-    axC.set_title(rf"PC1--PC3 explain {explained_pct[:3].sum():.1f}%")
-    axC.set_ylim(0, max(explained_pct) * 1.2)
-    axC.grid(axis="y", alpha=0.2)
-
-    for bar, value in zip(bars, explained_pct):
-        axC.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.8,
-            f"{value:.1f}",
-            ha="center",
-            va="bottom",
-            fontsize=8,
-        )
-
-    # ---------- D ----------
-    im = axD.imshow(
-        loadings[:, :3],
-        aspect="auto",
-        vmin=-1,
-        vmax=1,
-        cmap="coolwarm",
-    )
-
-    axD.set_xticks([0, 1, 2])
-    axD.set_xticklabels(["PC1", "PC2", "PC3"])
-    axD.set_yticks(range(len(ACTUATOR_COLS)))
-    axD.set_yticklabels([r"$m_0$", r"$m_1$", r"$m_2$", r"$m_3$", r"$z$"])
-    axD.set_title("PCA loadings")
-
-    for i in range(len(ACTUATOR_COLS)):
-        for j in range(3):
-            value = loadings[i, j]
-            axD.text(
-                j,
-                i,
-                f"{value:.2f}",
-                ha="center",
-                va="center",
-                fontsize=8,
-                color="white" if abs(value) > 0.55 else "black",
-            )
-
-    cbar = fig.colorbar(im, cax=caxL)
-    cbar.set_label("Loading")
-
-    # ---------- panel labels ----------
-    for ax, label in zip([axA, axB, axC, axD], ["A", "B", "C", "D"]):
-        ax.text(
-            -0.13,
-            1.10,
-            label,
-            transform=ax.transAxes,
-            fontsize=16,
-            fontweight="bold",
-            va="top",
-            ha="left",
-        )
-
-    fig.suptitle(
-        "Lower-dimensional structure of high-coupling solutions",
-        fontsize=14,
-        y=0.985,
-    )
-
-    fig.savefig(
-        OUTPUT_DIR / "combined_high_coupling_manifold_4panel_professional.png",
-        dpi=400,
-        bbox_inches="tight",
-    )
-    fig.savefig(
-        OUTPUT_DIR / "combined_high_coupling_manifold_4panel_professional.pdf",
-        bbox_inches="tight",
-    )
-
-    plt.close()
-    print("\nProfessional 4-panel manifold figure saved.")
-
-# =========================
-# MAIN
-# =========================
 
 def main():
     data = load_all_data()
@@ -638,7 +410,6 @@ def main():
 
     #best = high[high["voltage_mV"] >= threshold]
     #plot_z_voltage_trend(best)
-    make_combined_manifold_figure_4panel(high)
     print(f"\nDone. Results saved in: {OUTPUT_DIR.resolve()}")
 
 

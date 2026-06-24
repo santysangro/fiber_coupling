@@ -10,7 +10,7 @@ import pandas as pd
 
 class DataAcquisition:
 
-    def __init__(self, data_path= f"Data/data_22_4.csv", search_type="LatinHypercube", settle_time=1):
+    def __init__(self, data_path= f"Data/scan.csv", search_type="LatinHypercube", settle_time=1):
         self.data_path = data_path
         self.data = []
         self.labels = []

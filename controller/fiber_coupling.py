@@ -2,7 +2,7 @@ from model.data_acquisition import DataAcquisition
 from model.gaussian_process import GaussianProcessModel
 from controller.servos import Servos
 from controller.picoscope import Picoscope
-from configuration import SERVOS_TEST_POS, PICOSCOPE_RANGE
+from configuration import SERVOS_INTIAL_POS, PICOSCOPE_RANGE
 
 import numpy as np
 import time
@@ -18,7 +18,7 @@ class FiberCoupling:
         oversampling=10,
         min_boundary=None,
         max_boundary=None,
-        center=SERVOS_TEST_POS
+        center=SERVOS_INTIAL_POS
     ):
         self.csv_path = str(Path(csv_path))
         Path(self.csv_path).parent.mkdir(parents=True, exist_ok=True)

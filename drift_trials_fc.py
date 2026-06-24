@@ -1,35 +1,4 @@
-"""
-Fiber-coupling recovery benchmark.
 
-Purpose
--------
-Test whether the automated optimizer can recover the manually found high-coupling
-position from small random perturbations.
-
-For each trial:
-    1. Move to a randomly perturbed position around MANUAL_BEST_POS.
-    2. Measure the initial coupling voltage.
-    3. Run FiberCoupling optimization in a small search box around MANUAL_BEST_POS.
-    4. Validate the final coupling.
-    5. Save trial metrics, history, config, and plots.
-
-Main metrics
-------------
-- final validated voltage = mean ± std
-- percent recovery = 100 * final_voltage / MANUAL_BEST_VOLTAGE
-- improvement factor = final_voltage / initial_voltage
-- percent improvement = 100 * (final_voltage - initial_voltage) / initial_voltage
-- success at 80%, 90%, 95% of manual best
-- duration per trial
-- number of measurements, estimated from history rows where voltage is present
-
-Recommended use
----------------
-Start with N_TRIALS = 10 or 20 as a pilot.
-For final results, use N_TRIALS = 50 or 100.
-"""
-
-from __future__ import annotations
 
 import json
 import time
@@ -45,40 +14,34 @@ import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
 
-from configuration import SERVOS_TEST_POS
+from configuration import SERVOS_INTIAL_POS
 from controller.fiber_coupling import FiberCoupling
 from controller.servos import Servos
 from controller.picoscope import Picoscope
 
 
-# =============================================================================
-# User settings
-# =============================================================================
-
-# IMPORTANT: Set this to your manually optimized 5D position [m0, m1, m2, m3, z].
 # If SERVOS_TEST_POS already stores your manual best, leave this as SERVOS_TEST_POS.
-MANUAL_BEST_POS = np.asarray([600, 3866, 2164, 755, 11], dtype=float)
+MANUAL_BEST_POS = SERVOS_INTIAL_POS
 
 # IMPORTANT: Update this to the manually observed best voltage in the same PD gain /
 # Picoscope range settings used during the experiment.
 MANUAL_BEST_VOLTAGE = 1555  # mV
 
-# Start with 10-20 for a pilot. Use 50-100 for final statistics.
 N_TRIALS = 1
 RANDOM_SEED = 10
 
 # Random initial perturbation applied before each trial.
-# This tests recovery from nearby drift. Adjust to match the capture range you care about.
-PERTURB_ANGULAR = 100  # ± steps for m0-m3
-PERTURB_Z = 100        # ± steps for z
+# This tests recovery from nearby drift. 
+PERTURB_ANGULAR = 100  #steps for m0-m3
+PERTURB_Z = 100        #steps for z
 
 # Search box around MANUAL_BEST_POS used by the optimizer.
-# Keep this small if the experiment is specifically local recovery.
+# Should be smlall if the experiment is specifically local recovery.
 SEARCH_ANGULAR_RANGE = 150
 SEARCH_Z_RANGE = 200
 
 # Optimization budget per trial.
-# For local recovery, BO can often be modest; local/z refinement usually matters most.
+# For local recovery, BO can often be modest -> local/z refinement usually matters most.
 OPT_CONFIG = {
     "global_samples": 50,
     "bo_iterations": 30,
@@ -88,12 +51,11 @@ OPT_CONFIG = {
     "validation_measurements": 10,
 }
 
-# Measurement settings
 SETTLE_AFTER_INITIAL_MOVE_S = 1.0
 INITIAL_MEASUREMENTS = 10
-PICOSCOPE_RANGE = "PS2000_5V"  # change if needed
+PICOSCOPE_RANGE = "PS2000_5V" 
 
-# Success thresholds relative to manual best
+# Success thresholds RELATIVE to manual best
 SUCCESS_THRESHOLDS = [0.80, 0.90, 0.95, 0.99]
 
 # GP diagnostic plots from the optimizer after every trial.
@@ -104,22 +66,15 @@ GP_KAPPA_FOR_ACQUISITION = 1.0
 GP_DIMS_TO_PLOT = [0, 1, 2, 3, 4]
 GP_PAIRS_TO_PLOT = [(0, 1), (0, 2), (1, 2), (2, 3), (0, 4), (2, 4)]
 
-# Sample-count sweep: fit separate diagnostic GPs using only the first/subsampled
-# N global-scan points and compare predicted maps. This is for analysis only; it
-# does not affect the optimizer. To avoid huge overhead, run it only on selected trials.
+
 RUN_GP_SAMPLE_SWEEP = True
-GP_SAMPLE_SWEEP_TRIALS = [1]          # e.g. [1] for first trial only, or [] for all trials
+GP_SAMPLE_SWEEP_TRIALS = [1]        
 GP_SAMPLE_COUNTS = [20, 40, 80, 100, 200]
 GP_SAMPLE_SWEEP_RANDOM_SEED = 123
 
 # Safety bounds for servos
 SERVO_MIN = 0
 SERVO_MAX = 4095
-
-
-# =============================================================================
-# Data structures
-# =============================================================================
 
 @dataclass
 class TrialResult:
@@ -154,9 +109,7 @@ class TrialResult:
     history_csv: str
 
 
-# =============================================================================
-# Helpers
-# =============================================================================
+# Helpers & such (not super important)
 
 def now_output_dir() -> Path:
     date_folder = datetime.now().strftime("%Y-%m-%d")
@@ -251,16 +204,13 @@ def safe_percent_improvement(final_v: float, initial_v: float) -> float:
 
 
 
-# =============================================================================
-# GP diagnostic plotting
-# =============================================================================
+# -------------- GP plotting --------------
 
 def _gp_dimension_name(dim: int) -> str:
     return "z" if dim == 4 else f"m{dim}"
 
 
 def _get_gp_plot_context(fc: FiberCoupling):
-    """Return fitted GP context from a FiberCoupling object, if available."""
     gp_model = getattr(fc, "gp_model", None)
     if gp_model is None or getattr(gp_model, "gp", None) is None:
         print("Skipping GP diagnostic plots: no gp_model.gp found.")
@@ -461,9 +411,7 @@ def save_gp_diagnostic_plots(fc: FiberCoupling, out_dir: Path, title_prefix: str
         print(f"Warning: could not save GP diagnostic plots: {exc}")
 
 
-# =============================================================================
 # GP sample-count sweep plotting
-# =============================================================================
 
 def _normalize_with_bounds(X: np.ndarray, min_b: np.ndarray, max_b: np.ndarray) -> np.ndarray:
     denom = np.maximum(max_b - min_b, 1e-9)
@@ -644,9 +592,7 @@ def save_gp_sample_count_sweep(
     pd.DataFrame(summary_rows).to_csv(sweep_dir / "sample_sweep_summary.csv", index=False)
 
 
-# =============================================================================
-# Plotting
-# =============================================================================
+# More Plotting
 
 def plot_trial_summary(results_df: pd.DataFrame, out_dir: Path) -> None:
     if results_df.empty:
@@ -755,7 +701,7 @@ def plot_trial_summary(results_df: pd.DataFrame, out_dir: Path) -> None:
         plt.close()
 
 
-def save_text_summary(results_df: pd.DataFrame, out_dir: Path) -> None:
+def save_text_summary(results_df: pd.DataFrame, out_dir: Path):
     if results_df.empty:
         return
 
@@ -788,11 +734,9 @@ def save_text_summary(results_df: pd.DataFrame, out_dir: Path) -> None:
             f.write(f"{key}: {value}\n")
 
 
-# =============================================================================
 # Main experiment
-# =============================================================================
 
-def run_one_trial(trial: int, initial_pos: np.ndarray, output_root: Path) -> TrialResult:
+def run_one_trial(trial: int, initial_pos: np.ndarray, output_root: Path):
     trial_dir = output_root / f"trial_{trial:03d}"
     trial_dir.mkdir(parents=True, exist_ok=True)
 
