@@ -17,8 +17,7 @@ Data
 #Stuff I used for plotting / random tests
 combined_plots.py
 test_hysteresis_fc.py
-analize_fc_landscape.py
-chec_data.py
+analyze_fc_landscape.py
 large_missaligment_trials.py
 make_another_plot.py
 plots.py
