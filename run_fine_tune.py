@@ -73,7 +73,7 @@ def make_bounds(center: np.ndarray, radius: np.ndarray):
     
 
 # Main optimization loop
-def run_fine_tune(output_root: Path, initial_pos=SERVOS_INTIAL_POS, load_json=False):
+def run_fine_tune(output_root=Path("settings"), initial_pos=SERVOS_INTIAL_POS, load_json=False):
     settings_dir = output_root
     settings_dir.mkdir(parents=True, exist_ok=True)
 
