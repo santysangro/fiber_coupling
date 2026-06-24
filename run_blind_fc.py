@@ -292,7 +292,7 @@ def run_optimization_stage(stage: str, region_id: int, center: np.ndarray, radiu
     return result, history_df
 
 
-def main():
+def run_blind_coupling():
     output_root = now_output_dir()
     print("Output folder:", output_root)
 
@@ -446,4 +446,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_blind_coupling()

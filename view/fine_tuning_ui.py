@@ -1,4 +1,7 @@
 import customtkinter as ctk
+import threading
+
+from run_fine_tune import run_fine_tune
 
 
 class FineTuningFrame(ctk.CTkFrame):
@@ -6,8 +9,8 @@ class FineTuningFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
 
         self.grid_columnconfigure(0, weight=1)
+        self.running = False
 
-        # Title
         self.title = ctk.CTkLabel(
             self,
             text="Fine Tuning",
@@ -15,7 +18,6 @@ class FineTuningFrame(ctk.CTkFrame):
         )
         self.title.grid(row=0, column=0, pady=(10, 5))
 
-        # Status
         self.status = ctk.CTkLabel(
             self,
             text="Status: Idle",
@@ -23,20 +25,6 @@ class FineTuningFrame(ctk.CTkFrame):
         )
         self.status.grid(row=1, column=0, pady=5)
 
-        # Step size control (important for fine tuning)
-        self.step_label = ctk.CTkLabel(self, text="Step Size")
-        self.step_label.grid(row=2, column=0, pady=(10, 2))
-
-        self.step_slider = ctk.CTkSlider(
-            self,
-            from_=0.1,
-            to=10,
-            number_of_steps=100
-        )
-        self.step_slider.set(1.0)
-        self.step_slider.grid(row=3, column=0, pady=5)
-
-        # Optimize button
         self.optimize_button = ctk.CTkButton(
             self,
             text="Optimize Signal",
@@ -44,7 +32,6 @@ class FineTuningFrame(ctk.CTkFrame):
         )
         self.optimize_button.grid(row=4, column=0, pady=10)
 
-        # Stop button (important for control loops)
         self.stop_button = ctk.CTkButton(
             self,
             text="Stop",
@@ -53,21 +40,32 @@ class FineTuningFrame(ctk.CTkFrame):
         )
         self.stop_button.grid(row=5, column=0, pady=5)
 
-        self.running = False
-
     def start_optimization(self):
+        if self.running:
+            return
+
         self.running = True
-        print("Starting fine tuning optimization...")
-
         self.status.configure(text="Status: Optimizing")
+        self.optimize_button.configure(state="disabled")
 
-        # TODO later:
-        # - read picoscope signal
-        # - small servo adjustments
-        # - gradient/ascent or hill-climb
+        thread = threading.Thread(
+            target=self.run_optimization_thread,
+            daemon=True
+        )
+        thread.start()
+
+    def run_optimization_thread(self):
+        try:
+            run_fine_tune()
+            self.status.configure(text="Status: Finished")
+        except Exception as e:
+            self.status.configure(text="Status: Error")
+            print("Fine tuning failed:", e)
+        finally:
+            self.running = False
+            self.optimize_button.configure(state="normal")
 
     def stop_optimization(self):
         self.running = False
-        print("Stopping fine tuning...")
-
         self.status.configure(text="Status: Stopped")
+        print("Stopping fine tuning...")
